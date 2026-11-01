@@ -1,0 +1,34 @@
+# Private app copies and account data: never publish these.
+**/ChatGPT-UI-data/
+**/codex-home/
+**/profile/
+**/.codex/
+.env
+.env.*
+!.env.example
+**/auth.json
+**/*Cookies*
+**/*Login Data*
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*
+*.log
+# Build outputs and dependencies
+/build/
+/dist/
+/work/
+/outputs/
+.venv/
+__pycache__/
+*.py[cod]
+*.spec
+*.exe
+*.lnk
+*.zip
+# Official assets are obtained locally during builds, not stored here.
+/source/assets/
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini

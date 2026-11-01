@@ -1,0 +1,62 @@
+from unittest import TestCase, mock
+import tkinter as tk
+import time
+import tempfile
+from pathlib import Path
+import engine
+import patcher
+
+
+class StartupTests(TestCase):
+    def setUp(self):
+        self.args=mock.patch('sys.argv',['patcher','--self-test']);self.args.start()
+        self.root=tk.Tk();self.root.withdraw()
+        self.app=patcher.App(self.root)
+        self.package={'Name':'OpenAI.Codex','Version':'9999.12.31.0'}
+
+    def tearDown(self):
+        for timer in self.root.tk.call('after','info'): self.root.after_cancel(timer)
+        self.root.destroy();self.args.stop()
+
+    def drain(self):
+        limit=time.monotonic()+5
+        while self.app.busy and time.monotonic()<limit:
+            self.root.update();time.sleep(.01)
+        self.assertFalse(self.app.busy)
+
+    def test_unseen_version_is_ready_at_startup_without_validation_or_popup(self):
+        with mock.patch.object(engine,'detect',return_value=[self.package]), mock.patch.object(engine,'verify_source') as verify, mock.patch.object(patcher.messagebox,'showerror') as popup:
+            self.app.detect();self.drain()
+            verify.assert_not_called();popup.assert_not_called()
+        self.assertTrue(self.app.apply.instate(['!disabled']))
+        self.assertTrue(self.app.check.instate(['!disabled']))
+        self.assertIn('9999.12.31.0',self.app.summary.get())
+        self.assertNotIn('not supported',self.app.log.get('1.0','end'))
+
+    def test_detection_error_is_non_modal(self):
+        with mock.patch.object(engine,'detect',side_effect=RuntimeError('inspection unavailable')), mock.patch.object(patcher.messagebox,'showerror') as popup:
+            self.app.detect();self.drain();popup.assert_not_called()
+        self.assertIn('Click Refresh',self.app.log.get('1.0','end'))
+
+    def test_folder_buttons_use_detected_source_and_existing_legacy_copy(self):
+        with tempfile.TemporaryDirectory() as directory:
+            original=Path(directory)/'installed'/'app';original.mkdir(parents=True)
+            copy=Path(directory)/'data'/'releases'/('a'*32);copy.mkdir(parents=True)
+            package=dict(self.package,InstallLocation=str(original.parent))
+            with mock.patch.object(engine,'detect',return_value=[package]), mock.patch.object(self.app.store,'current',return_value={'layout':'single-app'}), mock.patch.object(self.app.store,'app_path',return_value=copy), mock.patch.object(patcher.os,'startfile') as open_folder:
+                self.app.show_folder(False);self.app.show_folder(True)
+                self.assertEqual(open_folder.call_args_list,[mock.call(str(original)),mock.call(str(copy))])
+
+    def test_missing_copy_does_not_create_or_open_a_folder(self):
+        with mock.patch.object(self.app.store,'current',return_value=None), mock.patch.object(patcher.os,'startfile') as open_folder:
+            with self.assertRaisesRegex(RuntimeError,'Create ChatGPT first'):
+                self.app.show_folder(True)
+            open_folder.assert_not_called()
+
+    def test_only_creation_attempt_reports_unsupported_without_popup(self):
+        self.app.package=self.package;self.app.compatible=True
+        with mock.patch.object(engine,'detect',return_value=[self.package]), mock.patch.object(self.app.store,'build',side_effect=engine.UnsupportedPatch('internal selector details')), mock.patch.object(patcher.messagebox,'showerror') as popup:
+            self.app.build();self.drain();popup.assert_not_called()
+        text=self.app.log.get('1.0','end')
+        self.assertIn('This change is not supported',text)
+        self.assertNotIn('internal selector details',text)
