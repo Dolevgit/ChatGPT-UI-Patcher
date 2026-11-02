@@ -60,3 +60,24 @@ class StartupTests(TestCase):
         text=self.app.log.get('1.0','end')
         self.assertIn('This change is not supported',text)
         self.assertNotIn('internal selector details',text)
+
+    def test_start_menu_requires_existing_custom_app(self):
+        with mock.patch.object(self.app.store,'current',return_value=None), mock.patch.object(patcher,'make_shortcut') as shortcut:
+            self.app.run(self.app.add_to_start_menu);self.drain()
+            shortcut.assert_not_called()
+        self.assertIn('Create ChatGPT first',self.app.log.get('1.0','end'))
+
+    def test_start_menu_adds_existing_copy_and_reports_success(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with mock.patch.object(self.app.store,'current',return_value={'layout':'single-app'}), mock.patch.object(self.app.store,'app_path',return_value=Path(directory)), mock.patch.object(patcher,'make_shortcut') as shortcut:
+                self.app.start_menu.invoke();self.drain()
+                shortcut.assert_called_once_with(self.app.base,start_menu=True)
+        self.assertIn('Added ChatGPT C',self.app.log.get('1.0','end'))
+
+    def test_start_menu_failure_is_reported_without_success(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with mock.patch.object(self.app.store,'current',return_value={'layout':'single-app'}), mock.patch.object(self.app.store,'app_path',return_value=Path(directory)), mock.patch.object(patcher,'make_shortcut',side_effect=RuntimeError('Shortcut creation failed')):
+                self.app.start_menu.invoke();self.drain()
+        text=self.app.log.get('1.0','end')
+        self.assertIn('Shortcut creation failed',text)
+        self.assertNotIn('Added ChatGPT C',text)

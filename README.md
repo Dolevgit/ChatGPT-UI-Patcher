@@ -21,6 +21,10 @@ Each option can be selected independently.
 1. Put `ChatGPT-UI-Patcher.exe` in a writable folder and run it. No installation or administrator rights needed.
 2. Choose your changes and click **Create / update ChatGPT**.
 3. Click **Open ChatGPT**, or use the `ChatGPT.lnk` shortcut created beside the tool.
+4. Optionally click **Add to Start menu** to open your custom copy from Start as **ChatGPT C**.
+   This adds a shortcut for your Windows user without administrator rights. Keep the patcher
+   and its data folder in place so the shortcut keeps working. You can remove it from Start
+   by right-clicking the entry, choosing **Open file location**, and deleting the shortcut.
 
 The original app must already be installed. Use **Open original folder** to see
 where files come from and **Open custom folder** to see the actual edited copy.
@@ -60,6 +64,9 @@ Local integration was tested with version **26.1027.3384.0**. Component tests co
 sidebar filtering and update recovery; authenticated account rendering still requires user validation.
 
 ## For developers
+
+**Start with [AGENTS.md](AGENTS.md)** for the project map, rules and development workflow.
+It is the shared entry point for new developers and coding agents.
 
 [Build and test](docs/DEVELOPMENT.md) · [How it works](docs/ARCHITECTURE.md) ·
 [Validation](docs/VALIDATION.md) · [Third-party notices](THIRD_PARTY_NOTICES.md)

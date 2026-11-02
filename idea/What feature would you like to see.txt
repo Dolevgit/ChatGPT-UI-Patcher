@@ -1,0 +1,63 @@
+I'd like to introduce **Floating Temporary Chat Windows** to the ChatGPT desktop app, allowing users to open multiple disposable conversations without interrupting their main conversation.
+
+The idea is to combine a regular, full-size ChatGPT conversation with smaller, floating temporary chat windows that can be minimized into tabs at the bottom of the application.
+
+### Proposed Behavior
+
+**1. Main Conversation**
+- The main conversation remains the primary workspace, displayed in the full-size chat area.
+- Regular conversations continue to be saved in the existing conversation history in the sidebar.
+- Users can return to any regular conversation through the sidebar at any time.
+
+**2. Floating Temporary Chat Windows**
+- Add a dedicated button with a flame icon to create a temporary conversation.
+- Clicking a temporary chat tab opens a small, floating chat window above the main interface.
+- The main conversation remains visible behind the floating window.
+- Each temporary chat has its own independent conversation context.
+- Multiple temporary conversations can exist simultaneously.
+
+**3. Persistent Tabs at the Bottom**
+- Minimized temporary conversations appear as compact, floating tabs at the bottom of the application.
+- Clicking a tab reopens its small chat window.
+- Tabs remain available until explicitly closed, including across application restarts.
+- Temporary conversations do not appear in the regular conversation history.
+
+**4. Temporary Window Controls**
+
+Each floating window should include:
+
+- **Minimize:** Hide the floating window while keeping its tab available.
+- **Expand:** Display the temporary conversation in the full-size main chat area, without converting it into a regular conversation.
+- **Save to History:** Convert the temporary conversation into a regular, permanent conversation and add it to the sidebar history.
+- **Close:** Discard the temporary conversation and remove its tab.
+
+Closing a temporary conversation should display a confirmation warning explaining that the conversation cannot be recovered.
+
+**5. Expanding a Temporary Conversation**
+- Expanding replaces the currently displayed main conversation with the temporary conversation.
+- The temporary conversation remains temporary, and its tab stays available.
+- The previously displayed regular conversation remains saved in history.
+- Selecting any conversation from the sidebar returns the user to a regular conversation.
+- The expanded temporary conversation can still be accessed through its bottom tab.
+
+### Why This Would Be Useful
+
+Not every question deserves a permanent conversation in chat history.
+
+Users frequently need to ask quick questions, troubleshoot unrelated issues, explore ideas, or perform small tasks while working on something more important.
+
+Currently, creating a separate regular conversation for every small question adds unnecessary clutter and interrupts the main workflow.
+
+Floating temporary chats would allow users to:
+
+- Keep their main conversation as their primary workspace.
+- Ask unrelated questions in smaller windows without losing context.
+- Keep temporary conversations open for minutes, hours, or even days.
+- Quickly switch between multiple temporary conversations.
+- Expand a temporary conversation when more space is needed.
+- Save useful temporary conversations permanently when necessary.
+- Discard conversations that are no longer relevant.
+
+The key principle is simple:
+
+**Regular conversations belong in history. Temporary conversations belong in floating tabs until the user explicitly saves or closes them.**

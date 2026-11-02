@@ -1,0 +1,15 @@
+I've attached a UI mockup illustrating the proposed behavior.
+
+The mockup demonstrates:
+1. A full-size main conversation with the regular history sidebar.
+2. Multiple minimized temporary chat tabs floating at the bottom.
+3. A small floating chat window opened by clicking a tab.
+4. Separate controls for minimizing, expanding, saving, and closing temporary conversations.
+5. Expanding a temporary chat into the main conversation area without saving it to history.
+6. Returning to a regular conversation through the sidebar.
+
+Temporary tabs should survive application restarts, but closing a tab should permanently remove access to that conversation, subject to the application's existing data retention policies.
+
+Ideally, this feature could reuse existing Temporary Chat infrastructure while introducing a more convenient multitasking interface.
+
+The attached mockup is a conceptual illustration, not a screenshot of an existing feature.

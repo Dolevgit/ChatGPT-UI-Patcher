@@ -12,13 +12,22 @@ import engine
 from features import OPTIONS
 
 
-def make_shortcut(base):
-    if not getattr(sys, 'frozen', False): return
+def make_shortcut(base, start_menu=False):
+    if not getattr(sys, 'frozen', False):
+        if start_menu: raise RuntimeError('Use the built EXE to add ChatGPT to the Start menu.')
+        return
     env = engine.windows_env()
     env.update(PATCHER_SHORTCUT=str(base / 'ChatGPT.lnk'), PATCHER_LAUNCHER=sys.executable,
-               PATCHER_ICON=str(base / 'ChatGPT-UI-data' / 'ChatGPT.ico'))
+               PATCHER_ICON=str(base / 'ChatGPT-UI-data' / 'ChatGPT.ico'),
+               PATCHER_START_MENU='1' if start_menu else '0')
     result = subprocess.run(['powershell.exe', '-NoProfile', '-NonInteractive', '-Command',
-        "$ErrorActionPreference='Stop'; $s=(New-Object -ComObject WScript.Shell).CreateShortcut($env:PATCHER_SHORTCUT); "
+        "$ErrorActionPreference='Stop'; $path=$env:PATCHER_SHORTCUT; "
+        "if ($env:PATCHER_START_MENU -eq '1') { "
+        "$programs=[Environment]::GetFolderPath('Programs'); "
+        "if (-not $programs) { throw 'Start menu folder was not found' }; "
+        "[IO.Directory]::CreateDirectory($programs) | Out-Null; "
+        "$path=Join-Path $programs 'ChatGPT C.lnk' }; "
+        "$s=(New-Object -ComObject WScript.Shell).CreateShortcut($path); "
         "$s.TargetPath=$env:PATCHER_LAUNCHER; $s.Arguments='--launch'; $s.IconLocation=$env:PATCHER_ICON+',0'; "
         "$s.Description='ChatGPT'; $s.Save()"], env=env, capture_output=True, creationflags=engine.FLAGS)
     if result.returncode: raise RuntimeError('Could not create the ChatGPT shortcut')
@@ -63,6 +72,9 @@ class App:
         self.copy_folder = ttk.Button(folders, text='Open custom folder',
                                      command=lambda: self.run(lambda: self.show_folder(True)))
         self.copy_folder.pack(side='left', padx=8)
+        self.start_menu = ttk.Button(folders, text='Add to Start menu',
+                                     command=lambda: self.run(self.add_to_start_menu))
+        self.start_menu.pack(side='left')
         frame = ttk.LabelFrame(panel, text='Available changes', padding=12)
         frame.pack(fill='x')
         try: saved=self.store.current() or {}
@@ -88,11 +100,17 @@ class App:
         self.progress.pack(fill='x', pady=(18, 8))
         self.log = tk.Text(panel, height=4, wrap='word', font=('Segoe UI', 10), state='disabled')
         self.log.pack(fill='both', expand=True)
-        self.widgets = [self.scan, self.apply, self.open, self.original_folder, self.copy_folder, *self.feature_controls]
+        self.widgets = [self.scan, self.apply, self.open, self.original_folder, self.copy_folder, self.start_menu, *self.feature_controls]
         root.after(100, self.poll)
         if '--self-test' not in sys.argv: root.after(200, self.detect)
 
     def report(self, message): self.events.put(('log', message))
+
+    def add_to_start_menu(self):
+        if not self.store.current() or not self.store.app_path().is_dir():
+            raise RuntimeError('Create ChatGPT first.')
+        make_shortcut(self.base, start_menu=True)
+        self.report('Added ChatGPT C to the Start menu. Keep the patcher and its data in this folder so the shortcut keeps working.')
 
     def show_folder(self, custom):
         if custom:
