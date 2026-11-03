@@ -23,6 +23,7 @@ Store app. The installed original is read-only input.
 | Option keys, labels and normalization | `source/features.py`; saved-state defaults in `source/patcher.py` |
 | Product selector and tabs | `source/selector_patch.py`, `source/patches/mode-tabs.js`, `source/tests/test_selector.py`, `source/tests/tabs.cjs` |
 | Sidebar filtering and navigation | `source/sidebar_patch.py`, `source/tests/test_sidebar.py`, `source/tests/sidebar.cjs` |
+| Floating ChatGPT chats | `source/floating_patch.py`, `source/patches/floating-state.js`, `source/patches/floating-chat.js`, `source/patches/floating-host.js`, `source/tests/test_floating.py`, `source/tests/floating.cjs` |
 | Patch planning, signatures and ASAR integrity | `source/engine.py`, `source/tests/test_engine.py` |
 | Launch, profiles, updates, recovery, cleanup | `source/storage.py`, `source/tests/test_updates.py` |
 | Copied executable icon | `source/app_icon.py` |
@@ -42,6 +43,7 @@ Store app. The installed original is read-only input.
 - Discover required UI structures unambiguously. Missing or ambiguous contracts must fail
   safely before activation. Do not depend on a specific minified symbol, bundle filename or
   version allowlist. Preserve native access gating and navigation fallback.
+- Keep **Bug fixes** last in the customization list; insert new options before it.
 - Keep options independent, including when disabled. Preserve older saved states and existing
   custom app paths; handle migrations deliberately.
 - Access Tk widgets on the GUI thread. Use the existing worker/event mechanism for blocking work.

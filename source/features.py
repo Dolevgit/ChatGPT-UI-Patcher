@@ -2,6 +2,7 @@ OPTIONS = (
     ('tabs', 'ChatGPT / Codex tabs'),
     ('hide_gpt_projects', 'Hide projects in ChatGPT'),
     ('separate_recents', 'Separate recent chats'),
+    ('floating_chat', 'Temporary floating chat'),
     ('bug_fixes', 'Bug fixes'),
 )
 

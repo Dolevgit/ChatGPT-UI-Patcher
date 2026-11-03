@@ -14,6 +14,7 @@ import stat
 import app_icon
 import selector_patch
 import sidebar_patch
+import floating_patch
 from collections import Counter
 from selector_patch import UnsupportedPatch
 
@@ -110,6 +111,8 @@ def plan_changes(root, options):
     except UnsupportedPatch as error:
         error.feature='tabs';raise
     contracts = Counter()
+    floating_roots = {key: [] for key in ('ChatGptConversationPage', 'WorkSideChatContent', 'startNewConversation')}
+    floating_roots['conversationActions'] = []
     with (root / 'resources/app.asar').open('rb') as f:
         tree, start, header_hash = header(f)
         if (root / 'ChatGPT.exe').read_bytes().count(header_hash.encode()) != 1:
@@ -118,6 +121,11 @@ def plan_changes(root, options):
         for name,entry in entries(tree):
             if not name.startswith('webview/') or not name.endswith('.js') or 'offset' not in entry or entry.get('unpacked'): continue
             f.seek(start+int(entry['offset']));data=f.read(entry['size'])
+            if options.get('floating_chat'):
+                for key in floating_roots:
+                    if re.search(rb'\bas\s+' + key.encode() + rb'\b', data): floating_roots[key].append(name)
+                if all(token in data for token in (b'protectedProjectId',b'draftKey',b'requireNonEmpty',b'previousTitle')):
+                    floating_roots['conversationActions'].append(name)
             edits=[]
             if tabs and name==tabs['ui']:
                 changed=selector_patch.rewrite(data,dict(tabs,fixNavigation=options['bug_fixes']),(ASSETS/'mode-tabs.js').read_text(encoding='utf-8'))
@@ -131,6 +139,29 @@ def plan_changes(root, options):
             if edits:
                 if sha(data)!=entry.get('integrity',{}).get('hash'):raise UnsupportedPatch('A UI bundle failed its integrity check')
                 bundles[name]={'ui':name,'uiHash':sha(data),'edits':edits}
+        if options.get('floating_chat'):
+            table = dict(entries(tree))
+            def read_module(name):
+                entry = table.get(name)
+                if entry is None or entry.get('unpacked') or 'offset' not in entry:
+                    raise UnsupportedPatch('Missing floating-chat dependency', 'floating_chat')
+                f.seek(start+int(entry['offset']));data=f.read(entry['size'])
+                if sha(data) != entry.get('integrity',{}).get('hash'):
+                    raise UnsupportedPatch('Floating-chat dependency failed its integrity check', 'floating_chat')
+                return data
+            try:
+                floating_edits = floating_patch.plan(read_module, floating_roots,
+                    (ASSETS/'floating-state.js').read_text(encoding='utf-8')+'\n'+(ASSETS/'floating-chat.js').read_text(encoding='utf-8'),
+                    (ASSETS/'floating-host.js').read_text(encoding='utf-8'))
+            except UnsupportedPatch:
+                raise
+            except (KeyError, ValueError, AttributeError, IndexError) as error:
+                raise UnsupportedPatch('Could not resolve native floating-chat contracts', 'floating_chat') from error
+            for name, edits in floating_edits.items():
+                data = read_module(name)
+                bundle = bundles.setdefault(name, {'ui':name,'uiHash':sha(data),'edits':[]})
+                bundle['edits'].extend(edits)
+            contracts['floating_chat'] = 1
     expected=[]
     if options['hide_gpt_projects']:expected.extend([('hide_gpt_projects',key) for key in ['project_mode','project_layout','project_navigation','recent_expansion']])
     if options['separate_recents']:expected.extend([('separate_recents','source_filter'),('separate_recents','source_filter_ui')])

@@ -2,6 +2,7 @@ from unittest import TestCase, mock
 import tkinter as tk
 import time
 import tempfile
+import gc
 from pathlib import Path
 import engine
 import patcher
@@ -17,6 +18,10 @@ class StartupTests(TestCase):
     def tearDown(self):
         for timer in self.root.tk.call('after','info'): self.root.after_cancel(timer)
         self.root.destroy();self.args.stop()
+        # Tk objects form callback cycles. Release them on the GUI thread before
+        # a later worker's allocations can trigger their Tcl finalizers.
+        self.app=None;self.root=None
+        gc.collect()
 
     def drain(self):
         limit=time.monotonic()+5
@@ -25,6 +30,7 @@ class StartupTests(TestCase):
         self.assertFalse(self.app.busy)
 
     def test_unseen_version_is_ready_at_startup_without_validation_or_popup(self):
+        self.assertFalse(self.app.feature_vars['floating_chat'].get())
         with mock.patch.object(engine,'detect',return_value=[self.package]), mock.patch.object(engine,'verify_source') as verify, mock.patch.object(patcher.messagebox,'showerror') as popup:
             self.app.detect();self.drain()
             verify.assert_not_called();popup.assert_not_called()

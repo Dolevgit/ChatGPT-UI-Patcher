@@ -30,6 +30,13 @@ disabled it uses the private `ChatGPT-UI-data/codex-home` instead. Shared data i
 the launched app, so the original app can see those changes. Do not confuse untouched installation
 files with isolated account data.
 
+The optional floating-chat feature stores account-scoped tab IDs, titles, marker flags and floating-control positions in
+the existing custom profile's localStorage. It does not copy message bodies or authentication
+data. Side chats are regular server conversations with an internal `---temporary---` title
+prefix; this does not enable native Temporary Chat privacy/retention behavior. Renaming and
+confirmed deletion use the application's existing authenticated actions. The installed original
+remains read-only, but regular server history can reflect these changes in other clients.
+
 No retained backup of the original is made. The official shortcut still opens the original.
 Temporary old custom program files are used only for transactional replacement and then removed.
 

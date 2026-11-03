@@ -84,3 +84,67 @@ or copied application files. A source ZIP can be generated from tracked files wi
 after a commit. No repository has been created remotely and no commit or push is performed here.
 
 Commit style: lowercase conventional commits, e.g. `feat(gui): add application folder buttons`.
+
+## Floating ChatGPT chats
+
+The optional floating-chat feature is disabled by default. `test_floating.py` discovers contracts in authored
+ESM fixtures and runs `floating.cjs` against the generated module. It covers renamed symbols and
+bundle paths, Unicode byte offsets, missing/ambiguous structures, identity gates, an ordinary
+draft, independent route props, both product hosts, lazy loading, nested-host suppression,
+tab switching, hover/focus, keyboard navigation, minimize/reopen, host remounts and creation failure. Rendering and state hooks
+are mocked; these checks are not an authenticated Electron UI test.
+
+To test the actual app, build the patcher normally, close the custom app, enable
+**Temporary floating chat** and click **Create / update ChatGPT**. Existing
+customizations can stay selected. Open the custom app in either ChatGPT or Codex, including its
+home/new-chat screen. The side chats are regular ChatGPT chats in either product.
+
+1. Hover over the **temporary-chat handle** at the bottom right and click **+**. Expect a small floating panel over the main conversation,
+   without shrinking the main area. The panel must show a regular ChatGPT composer.
+2. In a disposable test conversation, send an innocuous test message. Verify the panel's response
+   and confirm the main conversation did not navigate or receive that message.
+3. Type distinct drafts in the main and side composers. Send from each and check independence.
+4. Create a second tab with **+**, switch between the two and check their drafts and responses.
+   The selected tab must have the native neutral selected background. Hover over header/bar buttons
+   and use keyboard focus: feedback must be visible, with unavailable buttons muted.
+   While a side response is arriving, minimize the panel and reopen it by selecting its tab.
+   Check that tab switching/minimizing did not create another conversation or lose its response.
+   Click inside the side chat and its bar: it must stay open. Click the main composer: the
+   panel must minimize without losing drafts or streams. Reopen from its tab.
+   Moving the pointer away from the bar should collapse only the bar; keyboard focus also opens it.
+5. Check native history for the sent side chat: the customized title must hide `---temporary---`
+   and show dashed styling/an icon. Native rename UI or another client may reveal the raw prefix.
+6. Verify exactly one bar appears when history and a main chat are both visible; it must stay
+   at the viewport bottom right, outside the sidebar. Switch to Codex and back. The same bar and tabs should remain available; creating a tab while
+   in Codex must still open a regular ChatGPT chat. Also check navigation and native access restrictions.
+
+7. Wait for the real title to appear in the tab, restart the custom app and check that sent-chat
+   tabs restore and load their original conversations. Unsent local drafts are not restored.
+8. Use the **square (expand)** button: the same chat must open in the main area with its marker and tab retained. Select
+   another history chat, then reopen the tab. Test this starting from both products.
+9. Use the **disk (keep)** button: after the native rename succeeds, the tab must disappear and the regular chat must
+   open in the main area. On failure the tab stays. Check the server title no longer has the marker.
+10. Use the **×** on a tab or in the panel header to open the native delete confirmation. Cancel first and verify no deletion.
+    Confirm on a disposable test chat, then check history and the tab. A failed deletion must keep
+    the tab/dialog. Also test deleting the chat currently expanded in the main area.
+11. During first-message submission, try deletion before a server ID arrives. It must retain the
+    tab and ask for a retry instead of treating the in-flight chat as an unsent draft.
+
+12. Drag the panel by its title and the bar by the temporary-chat handle. Each must move independently,
+    stay inside the viewport and remember its position after restart. Resize the app smaller:
+    handles must remain reachable. Try arrow keys, Shift+arrows and Home to reset each handle.
+    Cancel a drag and check its previous saved position is retained.
+13. On disposable chats, test a failed rename/delete while offline, then reconnect and retry.
+    Switch accounts with a delete confirmation open: the other account must not inherit the
+    dialog, tabs, error or layout. A request already dispatched can finish on the old account;
+    it must not navigate the new account. Never expect a server request to be undone by switching.
+
+The temporary tag is attempted after the native server ID/query data arrive. Failed tagging
+shows **Retry** in the panel header. Draft labels become the actual clean title once available.
+The current tests use mocked services and hook scheduling, including rename failure/retry,
+mark/keep ordering, account changes, deletion failure/cancellation, storage corruption/quota and
+restart metadata. They do not establish real server title timing or actual dialog appearance.
+
+Report errors as short descriptions; do not share profiles, credentials or raw account reports.
+To turn floating chats off, close the custom app and rebuild its copy with this option unchecked.
+The patcher preserves the existing profile and does not remove regular chats from history.

@@ -16,6 +16,29 @@ Choose your changes and create a separate local copy. The installed original sta
 
 Each option can be selected independently.
 
+**Temporary floating chat** is off by default.
+It adds a floating tab bar on ChatGPT and Codex conversation/home screens. Hover over the
+temporary-chat handle, then click **+** to create a regular ChatGPT side chat. Select a tab to show it
+in the single floating panel; minimize without closing the chats. Tabs remain available during
+navigation and product switches. Once a chat has a server ID, its tab metadata is saved locally
+and restored after restart. Unsent drafts are session-only. Drag the panel by its title or the
+bar by its temporary-chat handle; their positions are saved separately for each account. Focus either
+handle and use arrow keys to move it (Shift for larger steps), or Home to reset its position.
+Saved positions stay reachable when the window size changes.
+
+Side chats are regular history chats tagged with the internal prefix `---temporary---`.
+The customized bar, panel and history rows hide this prefix; history rows receive a dashed
+title border and a native temporary-chat icon. The **disk** button keeps a chat by removing the prefix; the
+**square** button opens it in the main area without changing its temporary status. An **×** on
+each tab and in the panel header opens the native delete confirmation. Clicking the main area
+minimizes the panel without closing its chats. One viewport-level bar is shared by sibling
+history/main hosts as well as nested hosts. Failed deletions keep the tab. Other clients may display the raw prefix.
+The core lifecycle was user-tested in both products, including deletion and restart restoration.
+The selected tab has the native neutral selected background; header and bar buttons highlight on hover
+or keyboard focus. The floating handle and **+** use the native outlined button variant so
+they remain visible without hovering. Error recovery and account-switch paths have mocked component coverage.
+See the [floating-chat test steps](docs/DEVELOPMENT.md#floating-chatgpt-chats).
+
 ## How to use it
 
 1. Put `ChatGPT-UI-Patcher.exe` in a writable folder and run it. No installation or administrator rights needed.

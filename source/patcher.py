@@ -51,8 +51,8 @@ class App:
         root.title('ChatGPT UI Patcher')
         icon = Path(getattr(sys, '_MEIPASS', Path(__file__).parent)) / 'assets' / 'chatgpt.ico'
         if icon.exists(): root.iconbitmap(str(icon))
-        root.geometry('760x440')
-        root.minsize(760, 440)
+        root.geometry('760x470')
+        root.minsize(760, 470)
         root.protocol('WM_DELETE_WINDOW', self.close)
         style = ttk.Style()
         if 'vista' in style.theme_names(): style.theme_use('vista')
@@ -82,7 +82,7 @@ class App:
         preferences=saved.get('features',{})
         self.feature_vars={};self.feature_controls=[]
         for key,label in OPTIONS:
-            default=saved.get('tabs',True) if key=='tabs' else True
+            default=saved.get('tabs',True) if key=='tabs' else key!='floating_chat'
             value=tk.BooleanVar(value=preferences.get(key,default))
             control=ttk.Checkbutton(frame,text=label,variable=value)
             control.pack(anchor='w',pady=1);control.state(['disabled'])
