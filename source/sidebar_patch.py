@@ -51,7 +51,7 @@ def assignment_arrow(root, source, symbol):
         if value.type != 'call_expression': continue
         args = value.child_by_field_name('arguments').named_children
         if len(args) >= 2 and args[1].type == 'arrow_function': matches.append(args[1])
-    if len(matches) != 1: raise UnsupportedPatch('Could not locate the native sidebar mode selector')
+    if len(matches) != 1: raise UnsupportedPatch('Could not locate the native sidebar mode selector', 'hide_gpt_projects')
     return matches[0]
 
 
@@ -84,15 +84,15 @@ def discover(source, options):
                 insert(obj.end_byte-1, f',flatConversationHistory:{mode}==="chatgpt"||({flat})', 'hide_gpt_projects')
                 value = declarations(arrow.child_by_field_name('body')).get(props['mode'].text.decode())
                 if value is None or value.type != 'call_expression' or value.child_by_field_name('function').text.decode() != get:
-                    raise UnsupportedPatch('Could not resolve project grouping')
+                    raise UnsupportedPatch('Could not resolve project grouping', 'hide_gpt_projects')
                 args = value.child_by_field_name('arguments').named_children
                 if len(args) != 2 or args[0].type != 'identifier' or args[1].text != params[0].text:
-                    raise UnsupportedPatch('Unexpected project grouping contract')
+                    raise UnsupportedPatch('Unexpected project grouping contract', 'hide_gpt_projects')
                 mode_arrow = assignment_arrow(root, source, args[0].text.decode())
                 mode_params = arrow_params(mode_arrow)
                 body = mode_arrow.child_by_field_name('body')
                 if not mode_params or mode_params[0].type != 'identifier' or body.type != 'statement_block' or mode_arrow.has_error:
-                    raise UnsupportedPatch('Could not customize project grouping')
+                    raise UnsupportedPatch('Could not customize project grouping', 'hide_gpt_projects')
                 insert(body.start_byte+1, f'if({mode_params[0].text.decode()}==="chatgpt")return "list";', 'hide_gpt_projects')
                 found['project_mode'] += 1
 
@@ -130,7 +130,7 @@ def discover(source, options):
                 call=node.child_by_field_name('function');args=node.child_by_field_name('arguments').named_children
                 if call.type=='identifier' and len(args)==3 and literal(args[1])=='chats' and args[0].type=='identifier' and args[2].type=='identifier':
                     writers.append((call.text.decode(),args[0].text.decode()))
-            if len(set(writers))!=1 or len(react)!=1:raise UnsupportedPatch('Could not open the native recent-chat section')
+            if len(set(writers))!=1 or len(react)!=1:raise UnsupportedPatch('Could not open the native recent-chat section','hide_gpt_projects')
             write,store=writers[0];runtime=next(iter(react))
             statement=next(n for n in body.named_children if n.type in ('lexical_declaration','variable_declaration'))
             insert(statement.end_byte,f';(0,{runtime}.useEffect)(()=>{{if({mode}==="chatgpt"){write}({store},"chats",false)}},[{mode},{store}]);','hide_gpt_projects')
@@ -171,7 +171,7 @@ def discover(source, options):
             for name,value in declarations(fn.child_by_field_name('body')).items():
                 if value is not None and value.type == 'ternary_expression' and literal(value.child_by_field_name('consequence'))=='chatgpt' and literal(value.child_by_field_name('alternative'))=='codex':
                     mode_names.append(name)
-            if len(mode_names)!=1: raise UnsupportedPatch('Could not resolve the Projects navigation mode')
+            if len(mode_names)!=1: raise UnsupportedPatch('Could not resolve the Projects navigation mode', 'hide_gpt_projects')
             condition=node.child_by_field_name('condition')
             edit(condition,f'({mode_names[0]}==="codex"&&({condition.text.decode()}))','hide_gpt_projects')
             found['project_navigation']+=1
@@ -194,7 +194,7 @@ def discover(source, options):
                 if not any(n.type=='identifier' and n.text.decode()==props['nextMode'] for n in nodes(condition)):continue
                 if not any(literal(n)=='work' for n in nodes(condition)):continue
                 matches.append(condition)
-            if len(matches)!=1:raise UnsupportedPatch('Could not isolate the route reuse bug')
+            if len(matches)!=1:raise UnsupportedPatch('Could not isolate the route reuse bug','bug_fixes')
             edit(matches[0],'(false)','bug_fixes');found['product_navigation']+=1
     return edits,found
 

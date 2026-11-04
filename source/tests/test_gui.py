@@ -64,8 +64,17 @@ class StartupTests(TestCase):
         with mock.patch.object(engine,'detect',return_value=[self.package]), mock.patch.object(self.app.store,'build',side_effect=engine.UnsupportedPatch('internal selector details')), mock.patch.object(patcher.messagebox,'showerror') as popup:
             self.app.build();self.drain();popup.assert_not_called()
         text=self.app.log.get('1.0','end')
-        self.assertIn('This change is not supported',text)
+        self.assertIn('Could not prepare the custom app.',text)
         self.assertNotIn('internal selector details',text)
+
+    def test_creation_names_the_option_that_blocked_the_build(self):
+        self.app.package=self.package;self.app.compatible=True
+        error=engine.UnsupportedPatch('Unexpected project grouping contract','hide_gpt_projects')
+        with mock.patch.object(engine,'detect',return_value=[self.package]), mock.patch.object(self.app.store,'build',side_effect=error):
+            self.app.build();self.drain()
+        self.assertIn('Could not apply Hide projects in ChatGPT. Uncheck it and try again.',
+                      self.app.log.get('1.0','end'))
+        self.assertTrue(self.app.feature_vars['hide_gpt_projects'].get())
 
     def test_start_menu_requires_existing_custom_app(self):
         with mock.patch.object(self.app.store,'current',return_value=None), mock.patch.object(patcher,'make_shortcut') as shortcut:

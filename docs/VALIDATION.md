@@ -1,5 +1,22 @@
 # Validation
 
+On 2026-11-04, the installed 26.1029.7803.0 archive resolved the product selector
+inside a module factory. Bundle rewrites passed syntax validation for tabs alone
+and for tabs with Separate recent chats and Bug fixes. Hide projects in ChatGPT
+still hits a structural mismatch on this archive.
+These read-only checks did not exercise an authenticated UI.
+The GUI regression test checks that a failed project-grouping contract names
+Hide projects in ChatGPT and leaves the selection available for the user to change.
+
+The Rspack floating-chat planner resolved the native dependencies in the installed
+26.1029.7803.0 archive. The combined tabs, Separate recent chats, Temporary
+floating chat and Bug fixes plan rebuilt an isolated archive, passed JavaScript
+syntax checks and verified the new archive hash against the copied launcher.
+Factory fixture tests cover duplicate route-provider registration, runtime
+loading, history edits and failure when an identity check is missing. An isolated
+Create / update also completed through activation with those four options.
+These checks do not exercise an authenticated floating chat.
+
 Local verification on 2026-11-01 used Windows x64 and combined app version 26.1027.3384.0.
 Earlier full-copy integration confirmed preservation of the existing executable path and saved
 ChatGPT authentication files, no copied/merged Codex database, rebuilt bundle syntax checks,

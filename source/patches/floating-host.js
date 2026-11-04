@@ -39,12 +39,13 @@ function __customFloatingLoader(props) {
     return () => { __customFloatingHosts.delete(token.current); __customFloatingElect(); };
   }, []);
   if (!__customFloatingLazy) __customFloatingLazy = R.lazy(() =>
-    import("__PAGE_PATH__").then(module => ({ default: module.__customFloatingPanel })));
+    __LOAD_PANEL__.then(module => ({ default: module.__customFloatingPanel })));
   if (!ownsPanel) return null;
-  return __PORTAL_FACTORY__().createPortal(
-    J.jsx(R.Suspense, { fallback: null, children: J.jsx(__customFloatingLazy, { route: props.route }) }), document.body);
+  const panel = J.jsx(R.Suspense, { fallback: null, children: J.jsx(__customFloatingLazy, { route: props.route }) });
+  return __MOUNT_PANEL__;
 }
 
+// Floating chat history helpers.
 function __customFloatingHistoryText(value) {
   return typeof value === "string" && value.startsWith(__MARKER__) ? value.slice(__MARKER__.length).trim() : value;
 }

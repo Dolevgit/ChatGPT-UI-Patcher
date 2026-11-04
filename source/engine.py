@@ -15,6 +15,7 @@ import app_icon
 import selector_patch
 import sidebar_patch
 import floating_patch
+import floating_chunks
 from collections import Counter
 from selector_patch import UnsupportedPatch
 
@@ -113,6 +114,7 @@ def plan_changes(root, options):
     contracts = Counter()
     floating_roots = {key: [] for key in ('ChatGptConversationPage', 'WorkSideChatContent', 'startNewConversation')}
     floating_roots['conversationActions'] = []
+    floating_bundle = floating_chunks.Chunks() if options.get('floating_chat') else None
     with (root / 'resources/app.asar').open('rb') as f:
         tree, start, header_hash = header(f)
         if (root / 'ChatGPT.exe').read_bytes().count(header_hash.encode()) != 1:
@@ -122,6 +124,7 @@ def plan_changes(root, options):
             if not name.startswith('webview/') or not name.endswith('.js') or 'offset' not in entry or entry.get('unpacked'): continue
             f.seek(start+int(entry['offset']));data=f.read(entry['size'])
             if options.get('floating_chat'):
+                floating_bundle.scan(name, data)
                 for key in floating_roots:
                     if re.search(rb'\bas\s+' + key.encode() + rb'\b', data): floating_roots[key].append(name)
                 if all(token in data for token in (b'protectedProjectId',b'draftKey',b'requireNonEmpty',b'previousTitle')):
@@ -150,7 +153,9 @@ def plan_changes(root, options):
                     raise UnsupportedPatch('Floating-chat dependency failed its integrity check', 'floating_chat')
                 return data
             try:
-                floating_edits = floating_patch.plan(read_module, floating_roots,
+                bundled = bool(floating_bundle.side_loads and not floating_roots['WorkSideChatContent'])
+                planner = floating_chunks.plan if bundled else floating_patch.plan
+                floating_edits = planner(read_module, floating_bundle if bundled else floating_roots,
                     (ASSETS/'floating-state.js').read_text(encoding='utf-8')+'\n'+(ASSETS/'floating-chat.js').read_text(encoding='utf-8'),
                     (ASSETS/'floating-host.js').read_text(encoding='utf-8'))
             except UnsupportedPatch:

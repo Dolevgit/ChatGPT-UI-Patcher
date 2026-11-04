@@ -165,7 +165,7 @@ class App:
             packages = engine.detect()
             self.events.put(('packages', packages))
             current = next((p for p in packages if p['Name'] == engine.PACKAGE_NAME), None)
-            if current is None: raise engine.UnsupportedPatch()
+            if current is None: raise RuntimeError('ChatGPT / Codex was not found. Click Refresh.')
             result = self.store.build(current, selected['tabs'], self.report,features=selected)
             make_shortcut(self.base)
             return result
@@ -192,8 +192,11 @@ class App:
                     if kind == 'error':
                         self.write(value)
                     elif kind == 'unsupported':
-                        label=dict(OPTIONS).get(value,'This change')
-                        self.write(label+' is not supported by this app.')
+                        label = dict(OPTIONS).get(value)
+                        if label:
+                            self.write(f'Could not apply {label}. Uncheck it and try again.')
+                        else:
+                            self.write('Could not prepare the custom app. Your existing copy was kept.')
                     elif kind == 'scan_error':
                         self.write('Could not detect ChatGPT. Click Refresh to try again.')
         except queue.Empty: pass

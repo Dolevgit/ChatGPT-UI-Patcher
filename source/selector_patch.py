@@ -55,7 +55,13 @@ def analyze(source):
         while node and node.type != 'function_declaration': node = node.parent
         if node is None or node.start_byte in visited: continue
         visited.add(node.start_byte)
-        if node.has_error or node.parent.type not in ('program', 'export_statement'): continue
+        if node.has_error: continue
+        scope = node.parent
+        # Bundled modules can put their top-level declarations inside a factory method.
+        in_factory = (scope.type == 'statement_block'
+                      and scope.parent.type == 'method_definition'
+                      and scope.parent.parent.type == 'object')
+        if scope.type not in ('program', 'export_statement') and not in_factory: continue
         body = node.child_by_field_name('body')
         params = node.child_by_field_name('parameters').named_children
         if len(params) != 1: continue

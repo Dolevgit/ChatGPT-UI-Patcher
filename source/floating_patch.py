@@ -438,7 +438,7 @@ def plan(read, roots, template, host_template):
     host_replacements = {'__HOST__': host_fn.child_by_field_name('name').text.decode(), '__MARKER__':json.dumps(MARKER),
                          '__NATIVE_UI_INIT__': ui_initializer, '__NATIVE_ICON__': icon_call[2].text.decode(),
                          '__NATIVE_ASSET__': icon_call[3]['asset'].text.decode(), '__NATIVE_BUTTON__': button_call[2].text.decode(),
-                         '__PAGE_PATH__': './' + posixpath.relpath(page.name, posixpath.dirname(host.name))}
+                         '__LOAD_PANEL__': 'import(' + json.dumps('./' + posixpath.relpath(page.name, posixpath.dirname(host.name))) + ')'}
     for key, factory in [('__REACT_FACTORY__', runtime_factory(react)), ('__JSX_FACTORY__', runtime_factory(jsx)),
                          ('__PORTAL_FACTORY__', portal_factory)]:
         target, exported = factory
@@ -447,6 +447,7 @@ def plan(read, roots, template, host_template):
         if not relative.startswith('.'): relative = './' + relative
         host_imports.append('import{' + exported + ' as ' + alias + '}from"' + relative + '";')
         host_replacements[key] = alias
+    host_replacements['__MOUNT_PANEL__'] = host_replacements['__PORTAL_FACTORY__'] + '().createPortal(panel, document.body)'
     rendered = template
     for key, value in replacements.items(): rendered = rendered.replace(key, value)
     host_rendered = host_template
@@ -456,7 +457,16 @@ def plan(read, roots, template, host_template):
             raise UnsupportedPatch('Could not construct floating-chat components', FEATURE)
     additions = '\n' + '\n'.join(imports) + '\n' + rendered + '\nexport{__customFloatingPanel};\n'
     host_name = host_fn.child_by_field_name('name')
-    history_edits = []
+    return {
+        page.name: [dict(start=len(page.source), end=len(page.source), replacement=additions, feature=FEATURE)],
+        host.name: history_edits(sidebar_fn, sidebar_row)+[
+            dict(start=host_name.start_byte, end=host_name.end_byte, replacement=PREFIX+'NativeHost', feature=FEATURE),
+            dict(start=len(host.source), end=len(host.source), replacement='\n'+'\n'.join(host_imports)+'\n'+host_rendered, feature=FEATURE)],
+    }
+
+
+def history_edits(sidebar_fn, sidebar_row):
+    edits = []
     title = sidebar_row[3]['title'].text
     for _, _, _, props in jsx_calls(sidebar_fn):
         for key in ('title','ariaLabel'):
@@ -466,9 +476,5 @@ def plan(read, roots, template, host_template):
             if key == 'title' and {'ariaLabel','onClick','renderActions','statusState'} <= props.keys(): helper='__customFloatingHistoryTitle'
             replacement = helper+'('+value.text.decode()+')'
             if value.type == 'shorthand_property_identifier': replacement=key+':'+replacement
-            history_edits.append(dict(start=value.start_byte,end=value.end_byte,replacement=replacement,feature=FEATURE))
-    return {
-        page.name: [dict(start=len(page.source), end=len(page.source), replacement=additions, feature=FEATURE)],
-        host.name: history_edits+[dict(start=host_name.start_byte, end=host_name.end_byte, replacement=PREFIX+'NativeHost', feature=FEATURE),
-                    dict(start=len(host.source), end=len(host.source), replacement='\n'+'\n'.join(host_imports)+'\n'+host_rendered, feature=FEATURE)],
-    }
+            edits.append(dict(start=value.start_byte,end=value.end_byte,replacement=replacement,feature=FEATURE))
+    return edits

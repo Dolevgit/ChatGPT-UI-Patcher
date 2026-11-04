@@ -31,6 +31,20 @@ class SelectorTests(TestCase):
         self.assertIn(b'Render$.jsx',result)
         self.assertNotIn(b'__JSX__',result)
 
+    def test_rewrites_selector_inside_module_factory(self):
+        component = (FIXTURES/'new-selector.js').read_bytes()
+        prefix = b'export const modules = {moduleId(module, exports, load) {'
+        suffix = b';exports.Selector = DIn;}};'
+        source = prefix + component + suffix
+        plan, = selector_patch.analyze(source)
+        plan['uiHash'] = hashlib.sha256(source).hexdigest()
+        template = (FIXTURES.parent.parent/'patches/mode-tabs.js').read_text()
+        result = selector_patch.rewrite(source, plan, template)
+        self.assertTrue(result.startswith(prefix))
+        self.assertTrue(result.endswith(suffix))
+        self.assertIn(b'_X.jsx', result)
+        self.assertFalse(selector_patch.parser().parse(result).root_node.has_error)
+
     def test_missing_mode_callback_contract_is_not_guessed(self):
         source=(FIXTURES/'original-selector.js').read_bytes().replace(b'h(`codex`)',b'h(`agent`)')
         self.assertEqual(selector_patch.analyze(source),[])
