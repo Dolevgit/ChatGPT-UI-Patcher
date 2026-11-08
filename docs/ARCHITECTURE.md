@@ -12,6 +12,10 @@ There is no version catalog. Selected options must resolve unambiguously in the 
 code. Unsupported contracts fail before the current custom app is replaced. This is conservative
 structural matching, not a promise that all future versions work.
 
+Project hiding resolves the sidebar grouping selector from the configuration's native read.
+When the selector is imported through a factory namespace, discovery follows that import and
+its export within the same chunk. ChatGPT's list override then applies to all native consumers.
+
 ## Update transaction
 
 1. Validate source package and plan selected patches.
@@ -37,8 +41,9 @@ not restoration of publisher trust. Runtime DLLs and validation settings are lef
 
 `floating_patch.py` follows named native exports and relative ESM imports to discover the
 regular ChatGPT page, panel renderer/frame/route provider, identity gates and ordinary draft
-initializer. For Rspack archives, `floating_chunks.py` follows factory export getters, namespace
-dependencies and the native side-chat chunk loader. It wraps every archived copy of the route
+initializer. For Rspack archives, `floating_chunks.py` follows factory exports (getters or direct
+values), namespace dependencies and the native side-chat loader. It recognizes both single
+chunk IDs and ID arrays. It wraps every archived copy of the route
 provider because separate chunks can register the same module ID. Both paths resolve compiled
 symbols from syntax and module relationships. Missing or ambiguous contracts fail preparation.
 Additional imported dependencies are read through the engine's archive integrity checks.
@@ -50,9 +55,10 @@ Independent sibling roots also share a module-local mount lease: only one loader
 panel, and ownership transfers on unmount. The native portal runtime is structurally resolved
 from its createPortal usage and imported factory assignment. Rendering into document.body
 keeps fixed positioning outside transformed or clipped sidebar ancestors.
-`patches/floating-host.js` lazily loads the panel export added to the native ChatGPT page module.
-The ESM path uses a relative import. The Rspack path loads registered chunks through the native
-loader and mounts the portal from the page factory. An error boundary
+`patches/floating-host.js` lazily loads the panel export. The ESM path uses a relative import
+of the native ChatGPT page module. The Rspack path loads the side-chat factory through the native
+loader and mounts the portal there. It uses the native page's existing renderer export so any
+registered copy of the page factory can render the panel. An error boundary
 isolates lazy-loading failures from the main app. Original host props and children are retained.
 
 `patches/floating-chat.js` supplies the tab bar and single visible panel. Each tab uses a separate

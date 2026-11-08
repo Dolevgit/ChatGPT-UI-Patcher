@@ -7,9 +7,36 @@ import subprocess
 import tempfile
 import engine
 import sidebar_patch
+from selector_patch import UnsupportedPatch
 
 
 class SidebarTests(TestCase):
+    def test_project_grouping_follows_the_imported_selector(self):
+        data = b'''
+        export const __webpack_modules__ = {
+          grouping(module, out, load) {
+            const group = atom(ctx, (mode, {get}) => { return get(setting, mode); });
+            load.d(out, {}, {selected: group});
+          },
+          sidebar(module, out, load) {
+            const namespace = load("grouping");
+            const config = atom(ctx, (mode, {get}) => {
+              const current = get(namespace.selected, mode);
+              return {source: "all", mode: current, conversationFilter: "all",
+                      flatConversationHistory: false, workLocalSidebarContentVisible: true,
+                      linkedProjectsOnly: false};
+            });
+          }
+        };
+        '''
+        options = {'hide_gpt_projects': True, 'separate_recents': False, 'bug_fixes': False}
+        edits, counts = sidebar_patch.discover(data, options)
+        result = sidebar_patch.apply(data, edits)
+        self.assertEqual(counts, {'project_mode': 1})
+        self.assertIn(b'if(mode==="chatgpt")return "list"; return get(setting, mode)', result)
+        with self.assertRaisesRegex(UnsupportedPatch, 'one imported sidebar mode selector'):
+            sidebar_patch.discover(data.replace(b'{selected: group}', b'{other: group}'), options)
+
     def test_all_option_combinations_have_independent_contracts(self):
         fixtures=Path(__file__).parent/'fixtures'
         for hide,separate,bugs in itertools.product([False,True],repeat=3):

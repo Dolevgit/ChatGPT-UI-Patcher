@@ -1,5 +1,25 @@
 # Validation
 
+## App build 26.1103.32239 (2026-11-08)
+
+The installed Windows Store package reported version 26.1103.4239.0. Its
+Electron package metadata identified app build 26.1103.32239.
+Patch preparation succeeded with each of the five options enabled individually
+and with all five enabled together. The packaged EXE also passed the combined
+preparation check with 24 changed bundles and passed its Tk GUI self-test.
+
+With all five options enabled, an isolated Create / update run passed source,
+ASAR and file-inventory checks and activated the copy. All 24 rewritten
+JavaScript bundles passed `node --check`. The copy launched through the normal
+launcher and opened a responding window with an isolated profile and Codex home.
+
+The root build passed 48 Python tests and the Node component checks. New
+fixtures cover imported sidebar grouping, Rspack chunk ID arrays, and direct
+factory exports. Authenticated navigation, history rendering and floating-chat
+operations were not exercised against a live account on this build.
+
+## Earlier compatibility checks
+
 On 2026-11-04, the installed 26.1029.7803.0 archive resolved the product selector
 inside a module factory. Bundle rewrites passed syntax validation for tabs alone
 and for tabs with Separate recent chats and Bug fixes. Hide projects in ChatGPT

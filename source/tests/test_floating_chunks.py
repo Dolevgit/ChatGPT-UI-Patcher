@@ -126,7 +126,18 @@ class FloatingChunksTests(TestCase):
         for key in ('host', 'other'):
             host = patched[f'webview/{key}.js']
             self.assertIn(b'function __customFloatingNativeHost(', host)
-            self.assertIn(b'Promise.all([load.e(42),load.e(65)]).then(()=>load("chat"))', host)
+            self.assertIn(b'Promise.all([load.e(42),load.e(65)]).then(()=>load("side"))', host)
+
+    def test_plural_chunk_ids_and_direct_factory_exports(self):
+        entry = CHUNK.replace(b'__rspack_esm_id=42', b'__rspack_esm_ids=[41,42]')
+        entry = entry.replace(b'function Side({sideChat:s}){',
+                              b'load.d(out,{}, {WorkSideChatContent:function({sideChat:s}){')
+        entry = entry.replace(b'}\n    load.d(out,{WorkSideChatContent:()=>Side});', b'}});')
+        entry = entry.replace(b'{startNewConversation:()=>start}', b'{},{startNewConversation:start}')
+        patched = self.plan(entry)['webview/main.js']
+        side = patched.split(b'side(module,out,load){', 1)[1].split(b'chat(module,out,load){', 1)[0]
+        self.assertIn(b'__customFloatingPanel:()=>__customFloatingPortal', side)
+        self.assertIn(b'load("chat")["Render"]', side)
 
     def test_bundled_planner_rejects_missing_identity_gate(self):
         with self.assertRaisesRegex(UnsupportedPatch, 'identity gate'):

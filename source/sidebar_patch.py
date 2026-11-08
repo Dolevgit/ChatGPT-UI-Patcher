@@ -55,6 +55,54 @@ def assignment_arrow(root, source, symbol):
     return matches[0]
 
 
+def imported_mode_arrow(arrow, selector):
+    """Follow a namespace import to its selector definition in the same chunk."""
+    factory = enclosing(arrow, {'method_definition'})
+    if factory is None or factory.parent.type != 'object':
+        raise UnsupportedPatch('Could not locate the sidebar selector factory', 'hide_gpt_projects')
+    params = factory.child_by_field_name('parameters').named_children
+    namespace = selector.child_by_field_name('object')
+    key = selector.child_by_field_name('property').text.decode()
+    imported = declarations(factory.child_by_field_name('body')).get(namespace.text.decode())
+    if len(params) != 3 or imported is None or imported.type != 'call_expression':
+        raise UnsupportedPatch('Could not resolve the sidebar selector import', 'hide_gpt_projects')
+    args = imported.child_by_field_name('arguments').named_children
+    if imported.child_by_field_name('function').text != params[2].text or len(args) != 1 or not literal(args[0]):
+        raise UnsupportedPatch('Unexpected sidebar selector import', 'hide_gpt_projects')
+    module = literal(args[0])
+    matches = []
+    for sibling in factory.parent.named_children:
+        if sibling.type != 'method_definition' or sibling.child_by_field_name('name').text.decode() != module:
+            continue
+        params = sibling.child_by_field_name('parameters').named_children
+        if len(params) != 3 or sibling.has_error:
+            continue
+        _, exports, load = params
+        body = sibling.child_by_field_name('body')
+        values = declarations(body)
+        for call in nodes(body):
+            if call.type != 'call_expression' or call.child_by_field_name('function').text != load.text + b'.d':
+                continue
+            args = call.child_by_field_name('arguments').named_children
+            if len(args) not in (2, 3) or args[0].text != exports.text:
+                continue
+            for index, obj in enumerate(args[1:]):
+                value = properties(obj).get(key) if obj.type == 'object' else None
+                if value is None:
+                    continue
+                if index == 0 and value.type == 'arrow_function':
+                    value = value.child_by_field_name('body')
+                if value.type == 'identifier':
+                    value = values.get(value.text.decode())
+                if value is not None and value.type == 'call_expression':
+                    selector_args = value.child_by_field_name('arguments').named_children
+                    if len(selector_args) >= 2 and selector_args[1].type == 'arrow_function':
+                        matches.append(selector_args[1])
+    if len(matches) != 1:
+        raise UnsupportedPatch('Could not identify one imported sidebar mode selector', 'hide_gpt_projects')
+    return matches[0]
+
+
 def discover(source, options):
     """Return edits and the individual contracts satisfied in this UI bundle."""
     root = parser().parse(source).root_node
@@ -86,9 +134,15 @@ def discover(source, options):
                 if value is None or value.type != 'call_expression' or value.child_by_field_name('function').text.decode() != get:
                     raise UnsupportedPatch('Could not resolve project grouping', 'hide_gpt_projects')
                 args = value.child_by_field_name('arguments').named_children
-                if len(args) != 2 or args[0].type != 'identifier' or args[1].text != params[0].text:
+                if len(args) != 2 or args[1].text != params[0].text:
                     raise UnsupportedPatch('Unexpected project grouping contract', 'hide_gpt_projects')
-                mode_arrow = assignment_arrow(root, source, args[0].text.decode())
+                selector = args[0]
+                if selector.type == 'identifier':
+                    mode_arrow = assignment_arrow(root, source, selector.text.decode())
+                elif selector.type == 'member_expression':
+                    mode_arrow = imported_mode_arrow(arrow, selector)
+                else:
+                    raise UnsupportedPatch('Unexpected project grouping selector', 'hide_gpt_projects')
                 mode_params = arrow_params(mode_arrow)
                 body = mode_arrow.child_by_field_name('body')
                 if not mode_params or mode_params[0].type != 'identifier' or body.type != 'statement_block' or mode_arrow.has_error:
@@ -128,12 +182,23 @@ def discover(source, options):
                     if obj.type=='identifier':react.add(obj.text.decode())
                 if node.type!='call_expression':continue
                 call=node.child_by_field_name('function');args=node.child_by_field_name('arguments').named_children
-                if call.type=='identifier' and len(args)==3 and literal(args[1])=='chats' and args[0].type=='identifier' and args[2].type=='identifier':
+                if call.type == 'parenthesized_expression':
+                    sequence = call.named_children[0]
+                    if sequence.type == 'sequence_expression' and len(sequence.named_children) == 2 and sequence.named_children[0].text == b'0':
+                        call = sequence.named_children[1]
+                if call.type in ('identifier', 'member_expression') and len(args)==3 and literal(args[1])=='chats' and args[0].type=='identifier' and args[2].type=='identifier':
                     writers.append((call.text.decode(),args[0].text.decode()))
             if len(set(writers))!=1 or len(react)!=1:raise UnsupportedPatch('Could not open the native recent-chat section','hide_gpt_projects')
             write,store=writers[0];runtime=next(iter(react))
             statement=next(n for n in body.named_children if n.type in ('lexical_declaration','variable_declaration'))
-            insert(statement.end_byte,f';(0,{runtime}.useEffect)(()=>{{if({mode}==="chatgpt"){write}({store},"chats",false)}},[{mode},{store}]);','hide_gpt_projects')
+            initialized = {n.child_by_field_name('name').text.decode() for n in statement.named_children
+                           if n.type == 'variable_declarator' and n.child_by_field_name('value') is not None}
+            for n in statement.named_children:
+                if n.type == 'variable_declarator' and n.child_by_field_name('name').type == 'object_pattern':
+                    initialized.update(bindings(n.child_by_field_name('name')).values())
+            if not {mode, store} <= initialized:
+                raise UnsupportedPatch('Could not locate initialized recent-chat bindings', 'hide_gpt_projects')
+            insert(statement.end_byte,f';(0,{runtime}.useEffect)(()=>{{if({mode}==="chatgpt")(0,{write})({store},"chats",false)}},[{mode},{store}]);','hide_gpt_projects')
             found['recent_expansion']+=1
 
         for ret, obj in returned_objects(root, source, b'chatOrderInput'):

@@ -8,7 +8,7 @@ from selector_patch import UnsupportedPatch, bindings, literal, nodes, parser
 from sidebar_patch import declarations, enclosing
 
 
-CHUNK = re.compile(rb'\bexport const __rspack_esm_id=(\d+);')
+CHUNK = re.compile(rb'\bexport const __rspack_esm_(?:id=(\d+)|ids=\[(\d+(?:,\d+)*)\]);')
 FACTORY = re.compile(rb'(?<=[{,])\s*([\w$]+)\(\s*[\w$]+,\s*[\w$]+,\s*[\w$]+\s*\)\s*\{')
 SIDE_LOADER = re.compile(
     rb'Promise\.all\(\[((?:[\w$]+\.e\(\d+\),?)+)\]\)\.then\(([\w$]+)\.bind\(\2,"([^"]+)"\)\)\)\.WorkSideChatContent\b'
@@ -58,6 +58,8 @@ class Factory:
                     self.exports.update({key: value.child_by_field_name('body')
                                          for key, value in properties(args[1]).items()
                                          if value.type == 'arrow_function'})
+                if len(args) == 3 and args[2].type == 'object':
+                    self.exports.update(properties(args[2]))
         self.functions = {item.child_by_field_name('name').text.decode(): item for item in self.body.named_children
                           if item.type == 'function_declaration'}
 
@@ -68,8 +70,19 @@ class Factory:
         return None
 
     def export(self, function):
-        return require_one((key for key, value in self.exports.items() if value.text.decode() == function),
+        return require_one((key for key, value in self.exports.items()
+                            if value == function or self.functions.get(value.text.decode()) == function),
                            'factory function export')
+
+    def local_functions(self):
+        return (*self.functions.values(), *(value for value in self.exports.values()
+                                           if value.type == 'function_expression'))
+
+    def exported_function(self, key):
+        value = self.exports[key]
+        if value.type == 'function_expression':
+            return value
+        return self.functions[value.text.decode()]
 
     def render_ref(self, ref):
         module, key = ref
@@ -89,8 +102,8 @@ class Chunks:
         chunk = CHUNK.search(source[:1024])
         if not chunk:
             return
-        self.chunks[name] = int(chunk[1])
-        self.starter_exports.extend((name, m.start()) for m in re.finditer(rb'\bstartNewConversation:\(\)=>', source))
+        self.chunks[name] = {int(id) for id in (chunk[1] or chunk[2]).split(b',')}
+        self.starter_exports.extend((name, m.start()) for m in re.finditer(rb'\bstartNewConversation:', source))
         if all(token in source for token in (b'composerController', b'isIndicator', b'isTemporaryChat', b'onToggle')):
             self.toolbar.extend((name, m.start()) for m in re.finditer(rb'\bisIndicator\b', source))
         if all(token in source for token in (b'conversation_sidebar', b'navigationState', b'renderActions')):
@@ -133,7 +146,7 @@ def plan(read, chunks, template, host_template):
         seen = set()
         for file, offset in locations:
             node = tree_for(file).descendant_for_byte_range(offset, offset + 1)
-            fn = enclosing(node, {'function_declaration'})
+            fn = enclosing(node, {'function_declaration', 'function_expression'})
             if fn is None or (file, fn.start_byte) in seen:
                 continue
             seen.add((file, fn.start_byte))
@@ -141,7 +154,7 @@ def plan(read, chunks, template, host_template):
 
     def find(module, preferred=()):
         variants = list(candidates(module))
-        matches = [item for item in variants if chunks.chunks[item.file] in preferred]
+        matches = [item for item in variants if not chunks.chunks[item.file].isdisjoint(preferred)]
         if matches:
             return require_one(matches, 'loaded factory ' + module)
         if not variants:
@@ -157,20 +170,22 @@ def plan(read, chunks, template, host_template):
             module, key = ref
             item = find(module, dependencies)
             value = item.exports[key]
+            if value.type == 'function_expression':
+                return item, value
             if value.type == 'identifier' and value.text.decode() in item.functions:
                 return item, item.functions[value.text.decode()]
             ref = item.ref(value)
         raise UnsupportedPatch('Could not resolve a native factory export', FEATURE)
 
     side = find(side_id, dependencies)
-    panel = side.functions[side.exports['WorkSideChatContent'].text.decode()]
+    panel = side.exported_function('WorkSideChatContent')
     _, _, renderer, _ = require_one((c for c in jsx_calls(panel)
                                     if {'conversationId', 'isInlinePreview', 'isTemporaryChat',
                                         'transcriptPresentation'} <= c[3].keys()), 'panel conversation renderer')
     page_id, render_export = side.ref(renderer)
     page = find(page_id, dependencies)
-    render_fn = page.functions[page.exports[render_export].text.decode()]
-    page_fn = page.functions[page.exports['ChatGptConversationPage'].text.decode()]
+    render_fn = page.exported_function(render_export)
+    page_fn = page.exported_function('ChatGptConversationPage')
     if b'chatgpt.conversations' not in page_fn.text or not any(
             c[2].text == render_fn.child_by_field_name('name').text for c in jsx_calls(page_fn)):
         raise UnsupportedPatch('Could not link the regular ChatGPT renderer', FEATURE)
@@ -220,7 +235,7 @@ def plan(read, chunks, template, host_template):
                 continue
             if all(token in node.text for token in (b'protectedProjectId', b'draftKey', b'requireNonEmpty', b'previousTitle')):
                 item = Factory(file, node)
-                for fn in item.functions.values():
+                for fn in item.local_functions():
                     for call, _, _ in calls(fn):
                         callee, args = call_parts(call)
                         if item.ref(callee) and len(args) == 1 and args[0].type == 'object':
@@ -229,10 +244,10 @@ def plan(read, chunks, template, host_template):
                                 rename_candidates.append((item, fn, props, item.ref(callee)))
     actions, rename_ui, rename_props, rename = require_one(rename_candidates, 'regular conversation rename')
     action_module = find(rename[0], dependencies)
-    delete_fn = require_one((fn for fn in action_module.functions.values()
+    delete_fn = require_one((fn for fn in action_module.local_functions()
                             if b'safeDelete' in fn.text and any(literal(n) == '/conversation/id/{conversation_id}'
                                                                for n in nodes(fn))), 'native delete action')
-    remove = action_module.id, action_module.export(delete_fn.child_by_field_name('name').text.decode())
+    remove = action_module.id, action_module.export(delete_fn)
 
     rename_decls = declarations(rename_ui.child_by_field_name('body'))
     lookup_name, _ = call_parts(rename_decls[member(rename_props['conversationId'])[0]])
@@ -250,13 +265,13 @@ def plan(read, chunks, template, host_template):
 
     # Resolve the ordinary New Chat action by its published name and follow
     # the assignment that supplies the new draft ID.
-    starter_candidates = []
+    starter_candidates = {}
     for file, offset in chunks.starter_exports:
         item = factory_for(file, tree_for(file).descendant_for_byte_range(offset, offset + 1))
         if item and 'startNewConversation' in item.exports:
-            starter_candidates.append(item)
-    starter = require_one(starter_candidates, 'new conversation factory')
-    start_fn = starter.functions[starter.exports['startNewConversation'].text.decode()]
+            starter_candidates[file, item.id] = item
+    starter = require_one(starter_candidates.values(), 'new conversation factory')
+    start_fn = starter.exported_function('startNewConversation')
     create = require_one({starter.ref(call_parts(n.child_by_field_name('right'))[0]) for n in nodes(start_fn)
                           if n.type == 'assignment_expression'
                           and n.child_by_field_name('left').type == 'member_expression'
@@ -308,7 +323,7 @@ def plan(read, chunks, template, host_template):
                     statuses.add((page.ref(callee), atom))
     streaming, status = require_one(statuses, 'native streaming status')
 
-    rename_fn = action_module.functions[action_module.exports[rename[1]].text.decode()]
+    rename_fn = action_module.exported_function(rename[1])
     updater = require_one({action_module.ref(callee) for call, _, _ in calls(rename_fn)
                            for callee, args in [call_parts(call)] if action_module.ref(callee) and len(args) == 1
                            and args[0].type == 'object' and {'scope', 'conversationId', 'title'} <= properties(args[0]).keys()},
@@ -321,14 +336,15 @@ def plan(read, chunks, template, host_template):
                                and n.child_by_field_name('left').text.decode() == '!' + provisional_flag
                                and updater_module.ref(call_parts(n.child_by_field_name('right'))[0])},
                               'provisional title predicate')
-    confirm = require_one({page.ref(c[2]) for fn in page.functions.values() for c in jsx_calls(fn)
+    confirm = require_one({page.ref(c[2]) for fn in page.local_functions() for c in jsx_calls(fn)
                            if {'open', 'onOpenChange', 'isDeleting', 'onConfirm', 'title'} <= c[3].keys()
                            and page.ref(c[2])}, 'delete confirmation')
-    scope = require_one({value.text.decode() for key, value in render_decls.items()
-                         if value is not None and value.type == 'call_expression'
-                         and re.search(rb'\b' + re.escape(key.encode()) + rb'\.get\(', render_fn.text)
-                         and page.ref(call_parts(value)[0]) and len(call_parts(value)[1]) == 1
-                         and page.ref(call_parts(value)[1][0])}, 'ChatGPT scope hook')
+    scope_hook, scope_atom = require_one({
+        (page.ref(callee), page.ref(args[0])) for key, value in render_decls.items()
+        for callee, args in [call_parts(value)]
+        if len(args) == 1 and page.ref(callee) and page.ref(args[0])
+        and re.search(rb'\b' + re.escape(key.encode()) + rb'\.get\(', render_fn.text)
+    }, 'ChatGPT scope hook')
     react = require_one({n.child_by_field_name('object').text.decode() for n in nodes(render_fn)
                          if n.type == 'member_expression' and n.child_by_field_name('property').text == b'useState'},
                         'React hooks runtime')
@@ -337,10 +353,15 @@ def plan(read, chunks, template, host_template):
                           for obj, key in [pair] if key == 'createPortal' and obj in page.imports},
                          'native portal runtime')
 
-    replacements = {'__REACT__': react, '__JSX__': jsx, '__SCOPE__': scope,
-                    '__RENDERER__': render_fn.child_by_field_name('name').text.decode(),
+    # Mount from the side-chat factory. The native runtime can register any
+    # copy of the page factory, so use its existing renderer export.
+    react_module, jsx_module = page.imports[react], page.imports[jsx]
+    replacements = {'__REACT__': f'{side.load}({json.dumps(react_module)})',
+                    '__JSX__': f'{side.load}({json.dumps(jsx_module)})',
+                    '__SCOPE__': f'(0,{side.render_ref(scope_hook)})({side.render_ref(scope_atom)})',
                     '__MARKER__': json.dumps(MARKER), '__INITIALIZE__': ''}
     refs = {'__PROVIDER__': side.ref(provider), '__FRAME__': side.ref(frame), '__PATH__': path,
+            '__RENDERER__': (page_id, render_export),
             '__CREATE__': create, '__RENAME__': rename, '__DELETE__': remove, '__SERVER__': server,
             '__QUERY__': query, '__HAS_TITLE__': has_title, '__TITLE__': title, '__READ__': reader,
             '__PENDING__': pending, '__STATUS__': status, '__IS_STREAMING__': streaming,
@@ -348,7 +369,7 @@ def plan(read, chunks, template, host_template):
     for key, (hook, atom) in identity.items():
         label = 'ACCOUNT' if key == 'accountId' else 'USER'
         refs[f'__{label}_ATOM__'] = atom
-        replacements[f'__{label}__'] = f'(0,{page.render_ref(hook)})({page.render_ref(atom)})'
+        replacements[f'__{label}__'] = f'(0,{side.render_ref(hook)})({side.render_ref(atom)})'
 
     # Follow the navigation hook used by the conversation page itself.
     page_decls = declarations(page_fn.child_by_field_name('body'))
@@ -386,20 +407,24 @@ function __customFloatingButton(props) {{return {runtime}.jsx({button},{{color:"
     refs['__TEMP_ICON__'] = toolbar_id, '__customFloatingTemporaryIcon'
 
     for key, ref in refs.items():
-        expr = page.render_ref(ref)
+        expr = side.render_ref(ref)
         replacements[key] = f'(0,{expr})'
     rendered = render_template(template, replacements)
     additions = rendered + f"""
-function __customFloatingPortal(props) {{return {page.load}({json.dumps(portal)}).createPortal(
-    {jsx}.jsx(__customFloatingPanel,props),document.body)}}
-{page.load}.d({page.export_target},{{__customFloatingPanel:()=>__customFloatingPortal}});
+function __customFloatingPortal(props) {{return {side.load}({json.dumps(portal)}).createPortal(
+    {replacements['__JSX__']}.jsx(__customFloatingPanel,props),document.body)}}
+{side.load}.d({side.export_target},{{__customFloatingPanel:()=>__customFloatingPortal}});
 """
-    append(page, additions)
+    require_one(candidates(side_id), 'floating panel factory')
+    append(side, additions)
 
-    modules = {ref[0] for ref in refs.values()} | {hook[0] for hook, _ in identity.values()} | {portal}
+    modules = ({ref[0] for ref in refs.values()} | {hook[0] for hook, _ in identity.values()}
+               | {portal, react_module, jsx_module, scope_hook[0], scope_atom[0]})
     required_chunks = set(dependencies)
     for module in sorted(modules):
-        required_chunks.add(chunks.chunks[find(module, dependencies).file])
+        ids = chunks.chunks[find(module, dependencies).file]
+        if ids.isdisjoint(required_chunks):
+            required_chunks.add(min(ids))
 
     host_body, history_template = host_template.split('// Floating chat history helpers.\n', 1)
     rows = []
@@ -434,7 +459,7 @@ function __customFloatingTemporaryIcon(props) {{
         append(item, render_template(history, {'__MARKER__': json.dumps(MARKER), '__JSX_FACTORY__': f'(()=>{runtime})'}))
 
     for host in candidates(host_id):
-        host_fn = host.functions[host.exports[host_export].text.decode()]
+        host_fn = host.exported_function(host_export)
         for key in ('route', 'children'):
             local_binding(host_fn, key)
         host_jsx = require_one({c[1] for c in jsx_calls(host_fn)}, 'route provider JSX runtime')
@@ -444,8 +469,7 @@ function __customFloatingTemporaryIcon(props) {{
                                  'route provider React runtime')
         load = host.load
         chunk_loads = ','.join(f'{load}.e({id})' for id in sorted(required_chunks))
-        lazy = f'Promise.all([{chunk_loads}]).then(()=>{load}({json.dumps(page.id)}))'
-        # The page owns the portal so its DOM renderer is loaded with the page.
+        lazy = f'Promise.all([{chunk_loads}]).then(()=>{load}({json.dumps(side.id)}))'
         name = host_fn.child_by_field_name('name')
         body = render_template(host_body, {'__HOST__': name.text.decode(), '__REACT_FACTORY__': f'(()=>{host_react})',
                                            '__JSX_FACTORY__': f'(()=>{host_jsx})', '__LOAD_PANEL__': lazy,
