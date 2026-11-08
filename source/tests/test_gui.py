@@ -51,7 +51,8 @@ class StartupTests(TestCase):
             package=dict(self.package,InstallLocation=str(original.parent))
             with mock.patch.object(engine,'detect',return_value=[package]), mock.patch.object(self.app.store,'current',return_value={'layout':'single-app'}), mock.patch.object(self.app.store,'app_path',return_value=copy), mock.patch.object(patcher.os,'startfile') as open_folder:
                 self.app.show_folder(False);self.app.show_folder(True)
-                self.assertEqual(open_folder.call_args_list,[mock.call(str(original)),mock.call(str(copy))])
+                self.assertEqual(open_folder.call_args_list,
+                                 [mock.call(str(original.resolve())), mock.call(str(copy.resolve()))])
 
     def test_missing_copy_does_not_create_or_open_a_folder(self):
         with mock.patch.object(self.app.store,'current',return_value=None), mock.patch.object(patcher.os,'startfile') as open_folder:

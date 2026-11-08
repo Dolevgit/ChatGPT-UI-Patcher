@@ -69,10 +69,10 @@ class SidebarTests(TestCase):
         with tempfile.TemporaryDirectory() as directory:
             store=engine.Store(Path(directory)/'data')
             with mock.patch.dict(os.environ,{'USERPROFILE':str(Path.home())},clear=True):
-                self.assertEqual(store.codex_data_path({'features':{'bug_fixes':True}}),Path.home()/'.codex')
+                self.assertEqual(store.codex_data_path({'features':{'bug_fixes':True}}),(Path.home()/'.codex').resolve())
                 self.assertEqual(store.codex_data_path({'features':{'bug_fixes':False}}),store.root/'codex-home')
             other=Path(directory)/'official-home'
             with mock.patch.dict(os.environ,{'CODEX_HOME':str(other)}):
-                self.assertEqual(store.codex_data_path({'features':{'bug_fixes':True}}),other)
+                self.assertEqual(store.codex_data_path({'features':{'bug_fixes':True}}),other.resolve())
             with mock.patch.dict(os.environ,{'CODEX_HOME':str(store.root/'codex-home')}):
-                self.assertEqual(store.codex_data_path({'features':{'bug_fixes':True}}),Path.home()/'.codex')
+                self.assertEqual(store.codex_data_path({'features':{'bug_fixes':True}}),(Path.home()/'.codex').resolve())
