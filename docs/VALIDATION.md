@@ -1,5 +1,23 @@
 # Validation
 
+## App build 26.1111.21308 (2026-11-16)
+
+The installed Windows Store package reported version 26.1111.2228.0, and the
+Electron package metadata identified app build 26.1111.21308. Before the fix,
+Temporary floating chat preparation failed on an anonymous route-provider
+export. With the fix, each option passed preparation individually, and the
+packaged EXE prepared all five together with 25 changed bundles.
+
+An isolated Create / update run with all five options passed source, ASAR and
+file-inventory checks. All 25 rewritten bundles passed `node --check`. The
+custom copy opened a responding window through the normal launcher with an
+isolated profile and Codex home. Signed-in UI interactions were outside this check.
+
+The root build passed 49 Python tests and the Node component checks. The
+packaged Tk GUI self-test also passed. The regression fixture covers a direct anonymous
+provider export registered before its runtime import, alongside a provider
+copy exported through a getter.
+
 ## App build 26.1103.32239 (2026-11-08)
 
 The installed Windows Store package reported version 26.1103.4239.0. Its

@@ -44,7 +44,10 @@ regular ChatGPT page, panel renderer/frame/route provider, identity gates and or
 initializer. For Rspack archives, `floating_chunks.py` follows factory exports (getters or direct
 values), namespace dependencies and the native side-chat loader. It recognizes both single
 chunk IDs and ID arrays. It wraps every archived copy of the route
-provider because separate chunks can register the same module ID. Both paths resolve compiled
+provider because separate chunks can register the same module ID. An inline factory export
+captures the original function in the wrapper's closure and resolves the React and JSX runtimes
+when the wrapper renders. This supports anonymous providers and exports registered before the
+runtime imports initialize. Both paths resolve compiled
 symbols from syntax and module relationships. Missing or ambiguous contracts fail preparation.
 Additional imported dependencies are read through the engine's archive integrity checks.
 

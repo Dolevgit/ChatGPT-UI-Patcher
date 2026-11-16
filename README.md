@@ -83,7 +83,7 @@ ChatGPT Classic app has a different layout. There is no version allowlist: the t
 selected changes against the installed code and stops if it cannot identify the required structure.
 Future redesigns may need a tool update.
 
-Local integration covers app build **26.1103.32239** (Windows Store package **26.1103.4239.0**).
+Local integration covers app build **26.1111.21308** (Windows Store package **26.1111.2228.0**).
 Component tests cover navigation, sidebar filtering and update recovery. See
 [Validation](docs/VALIDATION.md) for the scope of the app checks.
 

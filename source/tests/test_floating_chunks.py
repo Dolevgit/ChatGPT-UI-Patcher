@@ -104,10 +104,11 @@ export const factories={routes(module,out,load){
 
 
 class FloatingChunksTests(TestCase):
-    def plan(self, entry=CHUNK):
+    def plan(self, entry=CHUNK, other_host=None):
+        if other_host is None:
+            other_host = HOST.replace(b'function Host', b'function Other').replace(b'()=>Host', b'()=>Other')
         modules = {'webview/main.js': entry, 'webview/host.js': HOST,
-                   'webview/other.js': HOST.replace(b'id=65', b'id=66').replace(b'function Host', b'function Other')
-                                            .replace(b'()=>Host', b'()=>Other')}
+                   'webview/other.js': other_host.replace(b'id=65', b'id=66')}
         chunks = floating_chunks.Chunks()
         for name, source in modules.items():
             chunks.scan(name, source)
@@ -138,6 +139,26 @@ class FloatingChunksTests(TestCase):
         side = patched.split(b'side(module,out,load){', 1)[1].split(b'chat(module,out,load){', 1)[0]
         self.assertIn(b'__customFloatingPanel:()=>__customFloatingPortal', side)
         self.assertIn(b'load("chat")["Render"]', side)
+
+    def test_wraps_anonymous_provider_in_direct_factory_export(self):
+        # Rspack can register the direct export before initializing the runtime.
+        direct = b'''
+export const __rspack_esm_id=65;
+export const factories={routes(module,out,load){
+  load.d(out,{}, {Host:function({route,children}){
+    const value=J.useContext(J.Context);
+    return J.jsx(J.Provider,{value,route,children});
+  }});
+  const J=load("base");
+}};
+'''
+        patched = self.plan(other_host=direct)
+        self.assertIn(b'function __customFloatingNativeHost(', patched['webview/host.js'])
+        other = patched['webview/other.js']
+        self.assertIn(b'Host:((__customFloatingNativeHost)=>{', other)
+        self.assertIn(b'return __customFloatingHost;', other)
+        self.assertIn(b'})(function({route,children}){\n    const value=J.useContext(J.Context);', other)
+        self.assertIn(b'children: J.jsx(__customFloatingNativeHost, { ...props, children })', other)
 
     def test_bundled_planner_rejects_missing_identity_gate(self):
         with self.assertRaisesRegex(UnsupportedPatch, 'identity gate'):

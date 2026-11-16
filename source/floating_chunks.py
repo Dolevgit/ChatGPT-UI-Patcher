@@ -471,11 +471,18 @@ function __customFloatingTemporaryIcon(props) {{
         chunk_loads = ','.join(f'{load}.e({id})' for id in sorted(required_chunks))
         lazy = f'Promise.all([{chunk_loads}]).then(()=>{load}({json.dumps(side.id)}))'
         name = host_fn.child_by_field_name('name')
-        body = render_template(host_body, {'__HOST__': name.text.decode(), '__REACT_FACTORY__': f'(()=>{host_react})',
+        wrapper = PREFIX + 'Host' if host_fn.type == 'function_expression' else name.text.decode()
+        body = render_template(host_body, {'__HOST__': wrapper, '__REACT_FACTORY__': f'(()=>{host_react})',
                                            '__JSX_FACTORY__': f'(()=>{host_jsx})', '__LOAD_PANEL__': lazy,
                                            '__MOUNT_PANEL__': 'panel'})
-        edit(host, name.start_byte, name.end_byte, PREFIX + 'NativeHost')
-        append(host, body)
+        if host_fn.type == 'function_expression':
+            # Direct exports can be anonymous and can run before the runtime
+            # imports initialize. Capture the original and defer runtime reads.
+            wrapped = f'(({PREFIX}NativeHost)=>{{\n{body}\nreturn {wrapper};\n}})({host_fn.text.decode()})'
+            edit(host, host_fn.start_byte, host_fn.end_byte, wrapped)
+        else:
+            edit(host, name.start_byte, name.end_byte, PREFIX + 'NativeHost')
+            append(host, body)
     return dict(edits)
 
 
