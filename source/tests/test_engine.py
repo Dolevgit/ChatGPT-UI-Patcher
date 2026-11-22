@@ -7,6 +7,7 @@ import tempfile
 import os
 import engine
 import selector_patch
+from features import normalize
 
 
 class ArchiveTests(TestCase):
@@ -53,6 +54,34 @@ class ArchiveTests(TestCase):
     def test_malformed_header(self):
         for data in [b'', b'0'*16, struct.pack('<4I', 4, 16, 12, 100)]:
             with self.assertRaises(RuntimeError): engine.header(io.BytesIO(data))
+
+    def test_navigation_contract_patches_replicas_and_rejects_distinct_factories(self):
+        build = b'function navigate(scope,{codexLocalAccessStatus,currentMode,nextMode,navigate,restoreNavigation,startNewConversation}){if(nextMode==="work"){return {sidebarThreadLocationId:null}}}'
+        method = b'export const modules={first(module,exports,load){' + build + b'}};'
+        expression = b'export const modules={first:(function(module,exports,load){' + build + b'})};'
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'resources').mkdir()
+            for replica in (True, False):
+                second = expression if replica else expression.replace(b'first:', b'second:')
+                files = {}
+                offset = 0
+                for name, data in [('first.js', method), ('second.js', second)]:
+                    files[name] = {'offset': str(offset), 'size': len(data), 'integrity': {'hash': engine.sha(data)}}
+                    offset += len(data)
+                raw = json.dumps({'files': {'webview': {'files': files}}}).encode()
+                pad = (-len(raw)) % 4
+                header = struct.pack('<II', len(raw) + 4 + pad, len(raw)) + raw + b'\0' * pad
+                (root / 'resources/app.asar').write_bytes(struct.pack('<II', 4, len(header)) + header + method + second)
+                (root / 'ChatGPT.exe').write_bytes(engine.sha(raw).encode())
+                options = normalize({'bug_fixes': True}, tabs=False)
+                if replica:
+                    plan = engine.plan_changes(root, options)
+                    self.assertEqual(plan['contracts'], {'product_navigation': 1})
+                    self.assertEqual(len(plan['bundles']), 2)
+                else:
+                    with self.assertRaisesRegex(engine.UnsupportedPatch, 'uniquely'):
+                        engine.plan_changes(root, options)
 
 
 class StoreTests(TestCase):

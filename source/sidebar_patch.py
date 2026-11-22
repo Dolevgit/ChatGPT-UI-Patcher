@@ -2,7 +2,7 @@
 import re
 import hashlib
 from collections import Counter
-from selector_patch import parser, nodes, bindings, literal, UnsupportedPatch
+from selector_patch import parser, nodes, bindings, literal, factory_entry, containing_factory, exported_factory_entry, UnsupportedPatch
 
 
 def properties(obj):
@@ -57,8 +57,11 @@ def assignment_arrow(root, source, symbol):
 
 def imported_mode_arrow(arrow, selector):
     """Follow a namespace import to its selector definition in the same chunk."""
-    factory = enclosing(arrow, {'method_definition'})
-    if factory is None or factory.parent.type != 'object':
+    scope = enclosing(arrow, {'method_definition', 'function_expression'})
+    if scope is not None and scope.type == 'function_expression':
+        scope = scope.parent.parent if scope.parent.type == 'parenthesized_expression' else scope.parent
+    _, factory = factory_entry(scope)
+    if factory is None:
         raise UnsupportedPatch('Could not locate the sidebar selector factory', 'hide_gpt_projects')
     params = factory.child_by_field_name('parameters').named_children
     namespace = selector.child_by_field_name('object')
@@ -71,8 +74,9 @@ def imported_mode_arrow(arrow, selector):
         raise UnsupportedPatch('Unexpected sidebar selector import', 'hide_gpt_projects')
     module = literal(args[0])
     matches = []
-    for sibling in factory.parent.named_children:
-        if sibling.type != 'method_definition' or sibling.child_by_field_name('name').text.decode() != module:
+    for entry in scope.parent.named_children:
+        name, sibling = factory_entry(entry)
+        if name is None or (literal(name) or name.text.decode()) != module:
             continue
         params = sibling.child_by_field_name('parameters').named_children
         if len(params) != 3 or sibling.has_error:
@@ -116,7 +120,8 @@ def discover(source, options):
     if options['hide_gpt_projects'] or options['separate_recents']:
         for ret, obj in returned_objects(root, source, b'conversationFilter'):
             props = properties(obj)
-            if not {'source','mode','conversationFilter','flatConversationHistory','workLocalSidebarContentVisible','linkedProjectsOnly'} <= props.keys(): continue
+            if not {'source','mode','conversationFilter','flatConversationHistory','linkedProjectsOnly'} <= props.keys(): continue
+            if not {'workLocalSidebarContentVisible', 'workVisibility'} & props.keys(): continue
             arrow = enclosing(ret, {'arrow_function'})
             params = arrow_params(arrow) if arrow else []
             if len(params) != 2 or params[0].type != 'identifier' or params[1].type != 'object_pattern': continue
@@ -261,6 +266,9 @@ def discover(source, options):
                 matches.append(condition)
             if len(matches)!=1:raise UnsupportedPatch('Could not isolate the route reuse bug','bug_fixes')
             edit(matches[0],'(false)','bug_fixes');found['product_navigation']+=1
+            key, _ = containing_factory(fn)
+            if key is not None and exported_factory_entry(key.parent)[1] is not None:
+                edits[-1]['factory'] = literal(key) or key.text.decode()
     return edits,found
 
 

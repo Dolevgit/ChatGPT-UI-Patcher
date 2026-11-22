@@ -36,6 +36,12 @@ class SidebarTests(TestCase):
         self.assertIn(b'if(mode==="chatgpt")return "list"; return get(setting, mode)', result)
         with self.assertRaisesRegex(UnsupportedPatch, 'one imported sidebar mode selector'):
             sidebar_patch.discover(data.replace(b'{selected: group}', b'{other: group}'), options)
+        expression = data.replace(b'grouping(module, out, load) {', b'grouping:(function(module, out, load) {')
+        expression = expression.replace(b'},\n          sidebar', b'}),\n          sidebar')
+        expression = expression.replace(b'workLocalSidebarContentVisible: true', b'workVisibility: {localThreadsAllowed: true}')
+        edits, counts = sidebar_patch.discover(expression, options)
+        self.assertEqual(counts, {'project_mode': 1})
+        self.assertIn(b'if(mode==="chatgpt")return "list";', sidebar_patch.apply(expression, edits))
 
     def test_all_option_combinations_have_independent_contracts(self):
         fixtures=Path(__file__).parent/'fixtures'

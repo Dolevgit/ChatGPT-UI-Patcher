@@ -112,6 +112,7 @@ def plan_changes(root, options):
     except UnsupportedPatch as error:
         error.feature='tabs';raise
     contracts = Counter()
+    navigation_factories = set()
     floating_roots = {key: [] for key in ('ChatGptConversationPage', 'WorkSideChatContent', 'startNewConversation')}
     floating_roots['conversationActions'] = []
     floating_bundle = floating_chunks.Chunks() if options.get('floating_chat') else None
@@ -138,7 +139,16 @@ def plan_changes(root, options):
             candidate=(options['hide_gpt_projects'] or options['separate_recents']) and b'linkedProjectsOnly' in data and b'flatConversationHistory' in data
             candidate=candidate or ((options['hide_gpt_projects'] or options['bug_fixes']) and b'codexLocalAccessStatus' in data)
             if candidate:
-                optional,found=sidebar_patch.discover(data,options);edits.extend(optional);contracts.update(found)
+                optional,found=sidebar_patch.discover(data,options);edits.extend(optional)
+                # Multiple chunks can register the same factory. Patch every
+                # copy and count the native navigation contract once.
+                if found['product_navigation'] == 1:
+                    factory = next(e.get('factory') for e in optional if e['feature'] == 'bug_fixes')
+                    if factory is not None:
+                        if factory in navigation_factories:
+                            del found['product_navigation']
+                        navigation_factories.add(factory)
+                contracts.update(found)
             if edits:
                 if sha(data)!=entry.get('integrity',{}).get('hash'):raise UnsupportedPatch('A UI bundle failed its integrity check')
                 bundles[name]={'ui':name,'uiHash':sha(data),'edits':edits}

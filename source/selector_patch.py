@@ -46,6 +46,41 @@ def bindings(pattern):
     return result
 
 
+def factory_entry(entry):
+    """Return the module key and factory from a bundled object member."""
+    if entry is not None and entry.parent is not None and entry.parent.type == 'object':
+        if entry.type == 'method_definition':
+            return entry.child_by_field_name('name'), entry
+        if entry.type == 'pair':
+            value = entry.child_by_field_name('value')
+            if value is not None and value.type == 'parenthesized_expression' and len(value.named_children) == 1:
+                value = value.named_children[0]
+            if value is not None and value.type == 'function_expression':
+                return entry.child_by_field_name('key'), value
+    return None, None
+
+
+def containing_factory(function):
+    scope = function.parent
+    if scope.type != 'statement_block':
+        return None, None
+    factory = scope.parent
+    entry = factory if factory.type == 'method_definition' else factory.parent
+    if entry.type == 'parenthesized_expression':
+        entry = entry.parent
+    key, candidate = factory_entry(entry)
+    return (key, candidate) if candidate == factory else (None, None)
+
+
+def exported_factory_entry(entry):
+    key, factory = factory_entry(entry)
+    if factory is not None:
+        declaration = entry.parent.parent
+        if declaration.type == 'variable_declarator' and declaration.parent.parent.type == 'export_statement':
+            return key, factory
+    return None, None
+
+
 def analyze(source):
     tree = parser().parse(source)
     candidates = []
@@ -57,10 +92,9 @@ def analyze(source):
         visited.add(node.start_byte)
         if node.has_error: continue
         scope = node.parent
-        # Bundled modules can put their top-level declarations inside a factory method.
-        in_factory = (scope.type == 'statement_block'
-                      and scope.parent.type == 'method_definition'
-                      and scope.parent.parent.type == 'object')
+        # Bundled modules can put top-level declarations inside factory methods or values.
+        _, factory = containing_factory(node)
+        in_factory = factory is not None
         if scope.type not in ('program', 'export_statement') and not in_factory: continue
         body = node.child_by_field_name('body')
         params = node.child_by_field_name('parameters').named_children

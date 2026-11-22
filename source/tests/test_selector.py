@@ -49,6 +49,12 @@ class SelectorTests(TestCase):
         source=(FIXTURES/'original-selector.js').read_bytes().replace(b'h(`codex`)',b'h(`agent`)')
         self.assertEqual(selector_patch.analyze(source),[])
 
+    def test_discovers_selector_inside_parenthesized_factory_value(self):
+        component = (FIXTURES/'new-selector.js').read_bytes()
+        source = b'export const modules = {product:(function(module, exports, load) {' + component + b'})};'
+        plan, = selector_patch.analyze(source)
+        self.assertEqual(plan['function'], 'DIn')
+
     def test_localization_and_comments_are_not_components(self):
         source=b'// codexAvailable onModeSelect sidebarElectron.productMode.trigger\nconst x={codexAvailable:true,onModeSelect(){}};'
         self.assertEqual(selector_patch.analyze(source),[])

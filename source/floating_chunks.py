@@ -4,12 +4,15 @@ import json
 import re
 
 from floating_patch import FEATURE, PREFIX, MARKER, calls, history_edits, jsx_calls, local_binding, properties, require_one
-from selector_patch import UnsupportedPatch, bindings, literal, nodes, parser
+from selector_patch import UnsupportedPatch, bindings, exported_factory_entry, literal, nodes, parser
 from sidebar_patch import declarations, enclosing
 
 
 CHUNK = re.compile(rb'\bexport const __rspack_esm_(?:id=(\d+)|ids=\[(\d+(?:,\d+)*)\]);')
-FACTORY = re.compile(rb'(?<=[{,])\s*([\w$]+)\(\s*[\w$]+,\s*[\w$]+,\s*[\w$]+\s*\)\s*\{')
+FACTORY = re.compile(
+    rb'(?<=[{,])\s*([\w$]+)(?::\s*\(?\s*function\s*)?'
+    rb'\(\s*[\w$]+,\s*[\w$]+,\s*[\w$]+\s*\)\s*\{'
+)
 SIDE_LOADER = re.compile(
     rb'Promise\.all\(\[((?:[\w$]+\.e\(\d+\),?)+)\]\)\.then\(([\w$]+)\.bind\(\2,"([^"]+)"\)\)\)\.WorkSideChatContent\b'
 )
@@ -35,9 +38,10 @@ def member(node):
 
 
 class Factory:
-    def __init__(self, file, node):
+    def __init__(self, file, node, key):
         self.file, self.node = file, node
-        self.id = node.child_by_field_name('name').text.decode()
+        self.key = key
+        self.id = literal(self.key) or self.key.text.decode()
         self.body = node.child_by_field_name('body')
         _, exports, load = node.child_by_field_name('parameters').named_children
         self.load, self.export_target = load.text.decode(), exports.text.decode()
@@ -95,6 +99,7 @@ class Chunks:
         self.chunks = {}
         self.side_loads = set()
         self.starter_exports = []
+        self.rename_exports = []
         self.toolbar = []
         self.history = []
 
@@ -104,6 +109,7 @@ class Chunks:
             return
         self.chunks[name] = {int(id) for id in (chunk[1] or chunk[2]).split(b',')}
         self.starter_exports.extend((name, m.start()) for m in re.finditer(rb'\bstartNewConversation:', source))
+        self.rename_exports.extend((name, m.start()) for m in re.finditer(rb'\brenameActiveChatGptConversation:', source))
         if all(token in source for token in (b'composerController', b'isIndicator', b'isTemporaryChat', b'onToggle')):
             self.toolbar.extend((name, m.start()) for m in re.finditer(rb'\bisIndicator\b', source))
         if all(token in source for token in (b'conversation_sidebar', b'navigationState', b'renderActions')):
@@ -118,6 +124,7 @@ class Chunks:
 def plan(read, chunks, template, host_template):
     side_id, dependencies = require_one(chunks.side_loads, 'lazy side-chat loader')
     cache = {}
+    factories = {}
 
     def tree_for(file):
         if file not in cache:
@@ -125,21 +132,23 @@ def plan(read, chunks, template, host_template):
         return cache[file]
 
     def factory_for(file, node):
-        node = enclosing(node, {'method_definition'})
-        if node is None or node.has_error or node.parent.type != 'object':
-            return None
-        declaration = node.parent.parent
-        if declaration.type == 'variable_declarator' and declaration.parent.parent.type == 'export_statement':
-            params = node.child_by_field_name('parameters').named_children
-            if len(params) == 3 and all(param.type == 'identifier' for param in params):
-                return Factory(file, node)
+        while node is not None:
+            key, factory = exported_factory_entry(node)
+            if factory is not None and not factory.has_error:
+                params = factory.child_by_field_name('parameters').named_children
+                if len(params) == 3 and all(param.type == 'identifier' for param in params):
+                    location = file, key.start_byte
+                    if location not in factories:
+                        factories[location] = Factory(file, factory, key)
+                    return factories[location]
+            node = node.parent
         return None
 
     def candidates(module):
         for file, offset in chunks.files.get(module, ()):
             tree = tree_for(file)
             item = factory_for(file, tree.descendant_for_byte_range(offset, offset + len(module)))
-            if item is not None and item.node.start_byte == offset:
+            if item is not None and item.key.start_byte == offset:
                 yield item
 
     def functions_at(locations):
@@ -178,7 +187,15 @@ def plan(read, chunks, template, host_template):
         raise UnsupportedPatch('Could not resolve a native factory export', FEATURE)
 
     side = find(side_id, dependencies)
-    panel = side.exported_function('WorkSideChatContent')
+    gate = side.exported_function('WorkSideChatContent')
+    side_param = local_binding(gate, 'sideChat')
+    panel = gate
+    children = [side.functions[c[2].text.decode()] for c in jsx_calls(gate)
+                if c[2].type == 'identifier' and c[2].text.decode() in side.functions
+                and member(c[3].get('conversationId')) == (side_param, 'conversationId')
+                and c[3].get('sideChat') is not None and c[3]['sideChat'].text.decode() == side_param]
+    if children:
+        panel = require_one(children, 'identity-gated panel component')
     _, _, renderer, _ = require_one((c for c in jsx_calls(panel)
                                     if {'conversationId', 'isInlinePreview', 'isTemporaryChat',
                                         'transcriptPresentation'} <= c[3].keys()), 'panel conversation renderer')
@@ -193,10 +210,9 @@ def plan(read, chunks, template, host_template):
     host_id, host_export = side.ref(provider)
     frame = require_one((c[2] for c in jsx_calls(panel) if set(c[3]) == {'children'} and side.ref(c[2])),
                         'panel conversation frame')
-    side_param = local_binding(panel, 'sideChat')
-    decls = declarations(panel.child_by_field_name('body'))
+    decls = declarations(gate.child_by_field_name('body'))
     identity = {}
-    for node in nodes(panel):
+    for node in nodes(gate):
         if node.type != 'binary_expression' or node.child_by_field_name('operator').text != b'!==':
             continue
         target = member(node.child_by_field_name('right'))
@@ -207,9 +223,12 @@ def plan(read, chunks, template, host_template):
     if set(identity) != {'accountId', 'userId'}:
         raise UnsupportedPatch('Could not resolve the native panel identity gate', FEATURE)
 
+    conversation_param = local_binding(panel, 'conversationId') if panel != gate else None
     path = require_one({side.ref(callee) for call, _, _ in calls(panel)
                         for callee, args in [call_parts(call)] if side.ref(callee) and len(args) == 1
-                        and member(args[0]) == (side_param, 'conversationId')}, 'native conversation path')
+                        and (member(args[0]) == (side_param, 'conversationId') or
+                             (conversation_param is not None and args[0].type == 'identifier'
+                              and args[0].text.decode() == conversation_param))}, 'native conversation path')
 
     edits = defaultdict(list)
 
@@ -220,28 +239,30 @@ def plan(read, chunks, template, host_template):
         offset = factory.body.end_byte - 1
         edit(factory, offset, offset, ';\n' + code + '\n')
 
-    # The renderer factory's sibling supplies the ordinary rename UI. Follow
-    # its bindings to the metadata atoms and the native action exports.
+    # The ordinary rename UI can live in its own loaded factory or alongside
+    # the renderer. Follow its bindings to the metadata atoms and actions.
     rename_candidates = []
-    for module in chunks.files:
-        if not any(file == page.file for file, _ in chunks.files[module]):
+    rename_modules = {item.id for file, offset in chunks.rename_exports
+                      if (item := factory_for(file, tree_for(file).descendant_for_byte_range(offset, offset + 1)))
+                      and 'renameActiveChatGptConversation' in item.exports}
+    if rename_modules:
+        item = find(require_one(rename_modules, 'active conversation rename factory'), dependencies)
+        rename_functions = [(item, item.exported_function('renameActiveChatGptConversation'))]
+    else:
+        rename_factories = {item for match in re.finditer(rb'\brequireNonEmpty\b', read(page.file))
+                            if (item := factory_for(page.file, tree_for(page.file).descendant_for_byte_range(
+                                match.start(), match.end()))) and all(token in item.node.text for token in
+                                    (b'protectedProjectId', b'draftKey', b'previousTitle'))}
+        rename_functions = [(item, fn) for item in rename_factories for fn in item.local_functions()]
+    for item, fn in rename_functions:
+        if rename_modules and not all(token in fn.text for token in (b'protectedProjectId', b'draftKey', b'requireNonEmpty')):
             continue
-        for file, offset in chunks.files[module]:
-            if file != page.file:
-                continue
-            tree = cache[file]
-            node = enclosing(tree.descendant_for_byte_range(offset, offset + len(module)), {'method_definition'})
-            if node is None or node.start_byte != offset or node.parent.parent.type != 'variable_declarator':
-                continue
-            if all(token in node.text for token in (b'protectedProjectId', b'draftKey', b'requireNonEmpty', b'previousTitle')):
-                item = Factory(file, node)
-                for fn in item.local_functions():
-                    for call, _, _ in calls(fn):
-                        callee, args = call_parts(call)
-                        if item.ref(callee) and len(args) == 1 and args[0].type == 'object':
-                            props = properties(args[0])
-                            if {'scope', 'conversationId', 'previousTitle', 'title'} <= props.keys():
-                                rename_candidates.append((item, fn, props, item.ref(callee)))
+        for call, _, _ in calls(fn):
+            callee, args = call_parts(call)
+            if item.ref(callee) and len(args) == 1 and args[0].type == 'object':
+                props = properties(args[0])
+                if {'scope', 'conversationId', 'previousTitle', 'title'} <= props.keys():
+                    rename_candidates.append((item, fn, props, item.ref(callee)))
     actions, rename_ui, rename_props, rename = require_one(rename_candidates, 'regular conversation rename')
     action_module = find(rename[0], dependencies)
     delete_fn = require_one((fn for fn in action_module.local_functions()
@@ -279,8 +300,11 @@ def plan(read, chunks, template, host_template):
                           and starter.ref(call_parts(n.child_by_field_name('right'))[0])}, 'ordinary draft initializer')
 
     render_decls = declarations(render_fn.child_by_field_name('body'))
-    reader = require_one({page.ref(callee) for call, _, _ in calls(render_fn)
-                          for callee, args in [call_parts(call)] if len(args) == 2
+    # Use the renderer's direct subscription, excluding imperative store
+    # reads that can shadow a namespace with the same short name.
+    reader = require_one({page.ref(callee) for value in render_decls.values()
+                          for callee, args in [call_parts(value)] if len(args) == 2
+                          and member(callee) and member(callee)[0] not in render_decls
                           and page.ref(callee) and page.ref(args[0]) == server}, 'server-ID subscription hook')
     turn = require_one((properties(node) for node in nodes(render_fn) if node.type == 'object'
                         and {'pendingSubmission', 'threadMapping', 'isStreaming'} <= properties(node).keys()), 'native turn status')
@@ -291,10 +315,21 @@ def plan(read, chunks, template, host_template):
             return page.ref(args[0])
         return None
 
-    pending_condition = turn['pendingSubmission'].child_by_field_name('condition')
-    pending = require_one({read_atom(render_decls.get(n.text.decode())) for n in nodes(pending_condition)
-                           if n.type == 'identifier' and read_atom(render_decls.get(n.text.decode()))},
-                          'pending submission atom')
+    submission = turn['pendingSubmission']
+    prompt_atoms = set()
+    for field in ('consequence', 'alternative'):
+        branch = submission.child_by_field_name(field)
+        if branch is not None and branch.type == 'object':
+            prompt = properties(branch).get('prompt')
+            if prompt is not None:
+                atom = read_atom(render_decls.get(prompt.text.decode()))
+                if atom is not None:
+                    prompt_atoms.add(atom)
+    condition = submission.child_by_field_name('condition')
+    if not prompt_atoms and condition is not None:
+        prompt_atoms = {atom for n in nodes(condition) if n.type == 'identifier'
+                        and (atom := read_atom(render_decls.get(n.text.decode())))}
+    pending = require_one(prompt_atoms, 'pending submission atom')
     activity = turn['isStreaming']
     while activity.type == 'binary_expression' and activity.child_by_field_name('operator').text == b'&&':
         activity = activity.child_by_field_name('right')

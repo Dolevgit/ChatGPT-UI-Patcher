@@ -104,11 +104,11 @@ export const factories={routes(module,out,load){
 
 
 class FloatingChunksTests(TestCase):
-    def plan(self, entry=CHUNK, other_host=None):
+    def plan(self, entry=CHUNK, other_host=None, extra=None):
         if other_host is None:
             other_host = HOST.replace(b'function Host', b'function Other').replace(b'()=>Host', b'()=>Other')
         modules = {'webview/main.js': entry, 'webview/host.js': HOST,
-                   'webview/other.js': other_host.replace(b'id=65', b'id=66')}
+                   'webview/other.js': other_host.replace(b'id=65', b'id=66'), **(extra or {})}
         chunks = floating_chunks.Chunks()
         for name, source in modules.items():
             chunks.scan(name, source)
@@ -163,3 +163,27 @@ export const factories={routes(module,out,load){
     def test_bundled_planner_rejects_missing_identity_gate(self):
         with self.assertRaisesRegex(UnsupportedPatch, 'identity gate'):
             self.plan(CHUNK.replace(b'u!==s.userId', b'u!==s.unknownIdentity'))
+
+    def test_split_side_panel_and_rename_factory(self):
+        entry = CHUNK.replace(b'load.e(42),load.e(65)', b'load.e(42),load.e(65),load.e(67)')
+        entry = entry.replace(b'side(module,out,load){', b'side:(function(module,out,load){')
+        entry = entry.replace(b'\n  },\n  chat(', b'\n  }),\n  chat(')
+        entry = entry.replace(
+            b'const path=(0,J.path)(s.conversationId);',
+            b'return J.jsx(Content,{sideChat:s,conversationId:s.conversationId});\n'
+            b'    }\n    function Content({sideChat:s,conversationId:id}){\n'
+            b'      const path=(0,J.path)(id);')
+        entry = entry.replace(b'chat(module,out,load){\n    const J=load("base");',
+                              b'chat(module,out,load){\n    const J=load("base"), shadow=load("actions");')
+        entry = entry.replace(b'scope.get(J.server,id);',
+                              b'scope.get(J.server,id); const shadow=scope, ignored=shadow.get(J.server,id);')
+        entry = entry.replace(b'pendingSubmission:prompt==null?null:{prompt}',
+                              b'pendingSubmission:prompt==null||server==null?null:{prompt}')
+        before, lookup = entry.split(b'  lookup(module,out,load){', 1)
+        lookup, after = lookup.split(b'  actions(module,out,load){', 1)
+        lookup = lookup.replace(b'\n  },\n', b'\n    load.d(out,{renameActiveChatGptConversation:()=>rename});\n  },\n')
+        rename_chunk = b'export const __rspack_esm_id=67;\nexport const factories={lookup(module,out,load){' + lookup + b'};'
+        patched = self.plan(before + b'  actions(module,out,load){' + after, extra={'webview/rename.js': rename_chunk})
+        self.assertIn(b'load("base")["path"]', patched['webview/main.js'])
+        self.assertIn(b'load("actions")["rename"]', patched['webview/main.js'])
+        self.assertIn(b'load.e(67)', patched['webview/host.js'])

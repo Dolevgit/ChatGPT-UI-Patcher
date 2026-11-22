@@ -1,5 +1,22 @@
 # Validation
 
+## App build 26.1117.41037 (2026-11-22)
+
+The installed Windows Store package reported version 26.1117.4957.0, and the
+Electron package metadata identified app build 26.1117.41037. All five options
+passed patch preparation individually. The packaged EXE passed combined
+preparation with 15 changed bundles and its Tk GUI self-test.
+
+An isolated Create / update run with all five options passed the source, ASAR
+and file-inventory checks. All 15 rewritten bundles passed `node --check`.
+The normal launcher opened a responding window with an isolated profile and
+Codex home. Signed-in interactions were outside this check.
+
+The root build passed 52 Python tests and the Node component checks. Regression
+fixtures cover function-valued module factories, replicated product navigation,
+the sidebar visibility object, and separate side-chat identity and rename
+components.
+
 ## App build 26.1111.21308 (2026-11-16)
 
 The installed Windows Store package reported version 26.1111.2228.0, and the

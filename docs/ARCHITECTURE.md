@@ -2,8 +2,8 @@
 
 `source/patcher.py` is the Tk GUI and short-lived launcher. `engine.py` reads package metadata,
 checks signatures, scans UI bundles and verifies/rebuilds ASAR archives. `selector_patch.py`
-finds the native product-selector contract using tree-sitter in both flat bundles and module
-factory bodies. `sidebar_patch.py` discovers
+finds the native product-selector contract using tree-sitter in flat bundles and in module
+factories defined as methods or function-valued properties. `sidebar_patch.py` discovers
 sidebar and navigation structures. `features.py` defines independent options. `storage.py`
 handles locks, validation, staging, activation, cleanup and launch environment. `app_icon.py`
 updates resources only in the copied executable.
@@ -15,6 +15,8 @@ structural matching, not a promise that all future versions work.
 Project hiding resolves the sidebar grouping selector from the configuration's native read.
 When the selector is imported through a factory namespace, discovery follows that import and
 its export within the same chunk. ChatGPT's list override then applies to all native consumers.
+When multiple chunks register the same navigation factory, Bug fixes rewrites every copy.
+Preparation rejects distinct factories that independently match the navigation contract.
 
 ## Update transaction
 
@@ -86,10 +88,12 @@ minimized. Corrupt/foreign records and unavailable storage produce an error with
 native conversations. The module-local registry also retains handles through a host remount;
 this does not promise uninterrupted streaming through every product/navigation transition.
 
-Discovery follows the existing rename UI to the native server-ID and conversation-query atoms,
-then finds their subscription hook in the renderer. The native turn-render contract supplies
-the pending-submission atom and streaming-status helper. No timer guesses when a new chat is
-ready. Once its server ID and title are available, the native rename action adds the exact
+Discovery follows the native side-chat identity gate into its local renderer when the gate and
+panel are separate components. It follows the existing rename UI to the server-ID and
+conversation-query atoms, including builds where the active-chat rename action has its own
+exported factory. The renderer supplies the subscription hook and the native turn-render
+contract supplies the pending-submission atom and streaming-status helper. Once the server
+ID and title are available, the native rename action adds the exact
 internal marker `---temporary---`. A failed marker rename has an explicit Retry action. Explicit
 and automatic operations are serialized per account/conversation; rename passes native expected
 identity and checks the live account before and after the request.
